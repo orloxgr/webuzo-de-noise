@@ -2,6 +2,7 @@
 import copy
 import datetime
 import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -168,3 +169,63 @@ class Inventory(unittest.TestCase):
         self.assertEqual(analysis_jobs.read(directory, 'status.json')['state'], 'cancelled')
         self.assertFalse((directory / 'report.sqlite').exists())
         self.assertFalse((self.root / 'policy.json').exists())
+
+    def export_job(self, kind='agents', complete=True):
+        with patch.object(analysis_jobs, 'launch_worker', return_value=99999999):
+            job = analysis_jobs.start(self.root, self.sites, 'root', 'all', 30, kind=kind)['id']
+        directory = analysis_jobs.directory(self.root, job)
+        result = self.scan(kind, report_path=directory / 'report.sqlite')
+        analysis_jobs.write(directory, 'result.json', result)
+        analysis_jobs.write(directory, 'status.json', dict(state='complete' if complete else 'running'))
+        return job, directory
+
+    def test_csv_export_reads_all_rows_across_transfer_chunks_without_scanning_or_writing(self):
+        (self.logs / 'one.test.log').write_text(''.join(self.line(agent='Agent-' + str(n)) for n in range(1507)) +
+            self.line(agent='TopBot') * 3)
+        job, directory = self.export_job()
+        database = directory / 'report.sqlite'
+        before = hashlib.sha256(database.read_bytes()).hexdigest()
+        rows, offset, chunks = [], 0, []
+        with patch.object(log_analysis, 'scan') as scan:
+            while offset is not None:
+                value = analysis_jobs.export_agents(self.root, job, 'root', offset)
+                self.assertEqual(value['total'], 1508)
+                rows.extend(value['rows']); chunks.append(len(value['rows']))
+                offset = value['next_offset']
+        scan.assert_not_called()
+        self.assertEqual(chunks, [500, 500, 500, 8])
+        self.assertEqual(rows[0], ['TopBot', 3])
+        self.assertEqual(len({row[0] for row in rows}), 1508)
+        self.assertEqual(hashlib.sha256(database.read_bytes()).hexdigest(), before)
+        self.assertFalse((self.root / 'policy.json').exists())
+
+    def test_export_rejects_foreign_jobs_incomplete_reports_offsets_and_untrusted_database(self):
+        job, directory = self.export_job()
+        with self.assertRaises(PermissionError): analysis_jobs.export_agents(self.root, job, 'alice')
+        for offset in (-1, True, '0', 1):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                analysis_jobs.export_agents(self.root, job, 'root', offset)
+        other, _ = self.export_job(kind='php_files')
+        with self.assertRaises(PermissionError): analysis_jobs.export_agents(self.root, other, 'root')
+        analysis_jobs.write(directory, 'status.json', dict(state='running'))
+        with self.assertRaises(ValueError): analysis_jobs.export_agents(self.root, job, 'root')
+        analysis_jobs.write(directory, 'status.json', dict(state='complete'))
+        (directory / 'report.sqlite').chmod(0o644)
+        with self.assertRaises(ValueError): analysis_jobs.export_agents(self.root, job, 'root')
+
+    def test_empty_completed_export_is_valid(self):
+        job, _ = self.export_job()
+        self.assertEqual(analysis_jobs.export_agents(self.root, job, 'root'), dict(rows=[], total=0, next_offset=None))
+
+    def test_export_endpoint_requires_root_scope_and_never_discovers_or_changes_sites(self):
+        with patch.object(engine.webuzo, 'users', return_value={'alice': dict(suspended=False)}):
+            with self.assertRaises(PermissionError):
+                engine.dispatch(dict(actor='alice', action='agents_export', job='a' * 32))
+        with self.assertRaises(PermissionError):
+            engine.dispatch(dict(actor='root', owner='alice', action='agents_export', job='a' * 32))
+        with patch.object(engine, 'collect') as collect, patch.object(analysis_jobs, 'export_agents',
+                return_value=dict(rows=[['GPTBot', 10]], total=1, next_offset=None)) as export:
+            result = engine.dispatch(dict(actor='root', action='agents_export', job='a' * 32, offset=0))
+        collect.assert_not_called()
+        self.assertTrue(result['ok'])
+        export.assert_called_once_with(engine.STATE, 'a' * 32, 'root', 0)

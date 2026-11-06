@@ -112,6 +112,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach (['files', 'queries'] as $kind) {
                 if (is_array($submitted['probe_exceptions'][$kind])) $request['policy']['probe_exceptions'][$kind] = (object)$submitted['probe_exceptions'][$kind];
             }
+        } elseif ($request['action'] === 'agents_export') {
+            $request['job'] = $_POST['analysis_job'] ?? '';
+            $request['offset'] = filter_var($_POST['export_offset'] ?? 0, FILTER_VALIDATE_INT);
         } elseif ($request['action'] === 'activity_start') {
             $request['minutes'] = filter_var($_POST['analysis_minutes'] ?? '', FILTER_VALIDATE_INT);
         } elseif (in_array($request['action'], ['log_scan', 'log_scan_start', 'agents_start', 'php_files_start'], true)) {
@@ -158,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (is_array($request['preferences'])) $request['preferences'] = (object)$request['preferences'];
         }
-        if (!in_array($request['action'], ['save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'domain_bans_save', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
+        if (!in_array($request['action'], ['save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'domain_bans_save', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
             $error = 'Unsupported operation.';
         } else {
             $isReview = strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0;
@@ -174,6 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     unset($result['job']['analysis']);
                 }
                 header('Content-Type: application/json; charset=utf-8');
+                header('Cache-Control: private, no-store');
                 if (empty($result['ok'])) http_response_code(400);
                 echo json_encode($result, JSON_THROW_ON_ERROR); exit;
             }

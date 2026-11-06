@@ -7,12 +7,14 @@ const source = fs.readFileSync(path.join(__dirname, '../panel/settings.js'), 'ut
 
 function fixture(replies, {action = null, remembered = null, activity = false, inventory = null} = {}) {
     if (!remembered) replies.unshift({ok:true,job:{id:null,state:'idle'}});
-    const handlers = {}, requests = [];
+    const handlers = {}, requests = [], downloads = [];
+    const exportStatus = {}, exportButton = {disabled:false};
+    let exportedBlob;
     let updated = false, stored = remembered;
     const button = {textContent: 'Analyze logs', disabled: false};
     const progress = {textContent: ''};
     const cancel = {hidden: true, addEventListener: (_, fn) => {handlers.cancel = fn;}};
-    const output = {replaceChildren: (...nodes) => {updated = nodes[0] === 'report';}, addEventListener: (_, fn) => {handlers.page = fn;}};
+    const output = {querySelector:()=>exportStatus, replaceChildren: (...nodes) => {updated = nodes[0] === 'report';}, addEventListener: (_, fn) => {handlers.page = fn;}};
     const fields = {
         '[name="analysis_minutes"]': {value:'30'},
         '[name="analysis_target"]': {value:'all'},
@@ -29,11 +31,12 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
         [reviewPrefix + '-output']: output,
         'hdn-agent-presets': {textContent: '{}'}, 'hdn-probe-presets': {textContent: '{}'}};
     vm.runInNewContext(source, {
-        document: {getElementById: id => nodes[id], querySelectorAll: () => [], addEventListener() {}, importNode: node => node},
+        document: {getElementById: id => nodes[id], querySelectorAll: () => [], addEventListener() {}, importNode: node => node,
+            body:{appendChild(){}}, createElement:()=>({click(){downloads.push({blob:exportedBlob,name:this.download});},remove(){}})},
         location: {pathname: '/plugins/de-noise/', href: 'https://panel.test/plugins/de-noise/?tab=filters'},
         sessionStorage: {getItem: () => stored, setItem: (_, value) => {stored = value;}},
         FormData: class {constructor(input) {this.fields = new Map(input ? [['action', 'log_scan_start'], ['token', 'csrf-token'], ['analysis_target', 'all']] : []);} set(k,v) {this.fields.set(k,String(v));}},
-        URL, setTimeout: fn => fn(),
+        Blob, URL:class extends URL {static createObjectURL(blob){exportedBlob=blob;return 'blob:csv-test';} static revokeObjectURL(){}}, setTimeout: fn => fn(),
         fetch: async (target, options) => {
             requests.push({target, options}); assert.ok(replies.length, 'Unexpected request');
             const value = replies.shift();
@@ -44,7 +47,8 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
         DOMParser: class {parseFromString() {return {getElementById: () => ({childNodes: ['report']})};}}
     });
     if (!remembered) requests.shift(); // Initial status lookup is not a new scan.
-    return {handlers, requests, button, progress, fields, updated: () => updated,
+    return {handlers, requests, button, progress, fields, downloads, exportStatus,
+        exportCSV:()=>handlers.page({target:{closest:selector=>selector === '[data-hdn-export-agents]' ? exportButton : null}}), updated: () => updated,
         submit: () => handlers.submit({preventDefault() {}})};
 }
 const queued = {ok: true, job: {id: 'one', state: 'queued'}};
@@ -201,4 +205,44 @@ test('PHP inventory appends exact paths and keeps case-sensitive URL distinction
     handlers.click({target:{closest:()=>({closest:()=>report})}});
     assert.equal(field.value,'/Keep.php\n/keep.php\n/new.php');
     assert.match(status.textContent,/2 new entries/);
+});
+
+
+test('CSV exports the complete saved inventory across chunks and safely quotes agent declarations', async () => {
+    const rows=[['GPTBot',23],['Comma, "quote"',7],['=HYPERLINK("https://example.test")',3],['  +SUM(1,2)',2],['\tformula',1],['Ελληνικά',1],['',1]];
+    const f=fixture([queued,done,{ok:true,export:{rows:rows.slice(0,2),total:7,next_offset:2}},
+        {ok:true,export:{rows:rows.slice(2),total:7,next_offset:null}}],{inventory:'agents'});
+    await f.submit(); await f.exportCSV();
+    assert.equal(f.downloads.length,1);
+    const csv=await f.downloads[0].blob.text();
+    assert.ok(csv.startsWith('agent,hits\r\n"GPTBot",23\r\n'));
+    assert.ok(csv.includes('"Comma, ""quote""",7\r\n'));
+    assert.ok(csv.includes('"\'=HYPERLINK(""https://example.test"")",3'));
+    assert.ok(csv.includes('"\'  +SUM(1,2)",2'));
+    assert.ok(csv.includes('"\'\tformula",1'));
+    assert.ok(csv.includes('"Ελληνικά",1')); assert.ok(csv.endsWith('"",1\r\n'));
+    assert.match(f.downloads[0].name,/^webuzo-de-noise-agents-.*\.csv$/);
+    const requests=f.requests.filter(r=>r.options.body.fields.get('action')==='agents_export');
+    assert.deepEqual(requests.map(r=>r.options.body.fields.get('export_offset')),['0','2']);
+    requests.forEach(r=>{
+        assert.equal(r.options.body.fields.get('analysis_job'),'one');
+        assert.equal(r.options.body.fields.get('token'),'csrf-token');
+        assert.equal(r.options.body.fields.has('policy'),false);
+    });
+    assert.equal(f.exportStatus.textContent,'CSV downloaded: 7 agents.');
+});
+
+test('a failed export chunk never downloads a partial CSV or restarts analysis', async () => {
+    const f=fixture([queued,done,{ok:true,export:{rows:[['First',1]],total:2,next_offset:1}},
+        {ok:false,error:'Report unavailable',http:400}],{inventory:'agents'});
+    await f.submit(); await f.exportCSV();
+    assert.equal(f.downloads.length,0); assert.equal(f.exportStatus.textContent,'Report unavailable');
+    assert.equal(f.requests.filter(r=>r.options.body.fields.get('action')==='agents_start').length,1);
+});
+
+test('an empty completed inventory exports the two-column header', async () => {
+    const f=fixture([queued,done,{ok:true,export:{rows:[],total:0,next_offset:null}}],{inventory:'agents'});
+    await f.submit(); await f.exportCSV();
+    assert.equal(await f.downloads[0].blob.text(),'agent,hits\r\n');
+    assert.equal(f.exportStatus.textContent,'CSV downloaded: 0 agents.');
 });

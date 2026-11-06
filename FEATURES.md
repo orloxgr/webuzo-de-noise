@@ -4,11 +4,12 @@ The source feature set is Hestia De-Noise at the commit recorded in `UPSTREAM`.
 The Webuzo integration was validated on Webuzo 4.9.1, Ubuntu 24.04, native website
 Nginx 1.30.5 and PHP 8.3. Panel PHP syntax is also checked with EMPS PHP 7.4;
 Python source syntax is checked for Python 3.9 compatibility. The automated suite
-contains 273 passing Python tests and 17 passing JavaScript tests.
+contains 277 passing Python tests and 20 passing JavaScript tests.
 
 | Feature | Webuzo integration | Validation |
 | --- | --- | --- |
 | Five independent User-Agent categories | Native Nginx custom includes; existing selections migrate without new blocks | Real native Nginx requests verify each switch independently; website and webmail compilers, case-insensitive literal matching and configuration escaping |
+| Full agent CSV export | Completed, administrator-owned report; no new scan | Complete multi-chunk export, CSV quoting and formula neutralization, empty reports, failure handling and account/job access checks |
 | Current agent and PHP 404 inventories | Administrator-only background analysis of native web logs | Native panel AJAX: exact five-request counts split across two domains; domain/time selection, compressed rotations, complete pagination, job ownership and CSRF. Browser append/save preserves existing entries and switches |
 | Private-file and repository protection | Native Nginx custom includes | HTTP runtime before PHP; isolated mail compiler tests |
 | Observe / Enforce / Off | Per-domain Nginx rules | HTTP runtime including independent account override |

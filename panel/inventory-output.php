@@ -12,6 +12,10 @@ $prefix = 'hdn-' . $kind;
 <div class="hdn-inventory-actions u-mb10">
 <label><input type="checkbox" data-hdn-select-inventory> Select this page</label>
 <button type="button" class="button button-secondary" data-hdn-append-selected>Append selected to lists</button>
+<?php if ($kind === 'agents'): ?>
+<button type="button" class="button button-secondary" data-hdn-export-agents title="Download agent and hits for every entry in this analysis, across all result pages.">Export CSV</button>
+<span data-hdn-export-status role="status"></span>
+<?php endif; ?>
 </div>
 <p data-hdn-append-status role="status" class="u-mb10"></p>
 <div class="hdn-scoped-table-wrap"><table class="table hdn-inventory-table"><thead><tr><th>Select</th><th><?= $kind === 'agents' ? 'Declared agent' : 'PHP path · HTTP 404' ?></th><th>Hits</th><th>Source domains / hits</th><th>Append to</th></tr></thead><tbody>

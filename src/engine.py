@@ -25,7 +25,7 @@ import enumeration
 import log_analysis
 import analysis_jobs
 
-REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
+REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -325,12 +325,15 @@ def dispatch(request):
             return {'ok': True, 'job': job}
         if not admin or owner != request['actor']:
             raise PermissionError('Log analysis requires the administrator context')
-        if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page'}:
+        if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page', 'offset'}:
             raise ValueError('Only log-analysis selections can be submitted')
         for kind in ('agents', 'php_files'):
             if not request['action'].startswith(kind + '_'):
                 continue
             operation = request['action'][len(kind) + 1:]
+            if kind == 'agents' and operation == 'export':
+                return {'ok': True, 'export': analysis_jobs.export_agents(STATE, request.get('job'),
+                    request['actor'], request.get('offset', 0))}
             if operation == 'start':
                 job = analysis_jobs.start(STATE, None, request['actor'], request.get('target'),
                     request.get('minutes'), kind=kind)

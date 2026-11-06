@@ -1,5 +1,10 @@
 (() => {
     'use strict';
+    const csvAgent = value => {
+        // Agent declarations are untrusted input, including spreadsheet formulas.
+        if (/^[\s\uFEFF]*[=+\-@]/.test(value) || /^[\t\r\n]/.test(value)) value = "'" + value;
+        return '"' + value.replace(/"/g, '""') + '"';
+    };
     const initializeReview = (formId, prefix, actionPrefix, tab, label) => {
       const scanForm = document.getElementById(formId);
       if (scanForm) {
@@ -15,13 +20,14 @@
         scanForm.addEventListener('change', selectionEdited);
         try { job = sessionStorage.getItem(storageKey); } catch (_) { /* Storage is optional. */ }
         const remember = id => { job = id; try { sessionStorage.setItem(storageKey, id); } catch (_) {} };
-        const request = async (action, page = 1, initial = false) => {
+        const request = async (action, page = 1, initial = false, exportOffset = null, requestedJob = job) => {
             const body = initial ? new FormData(scanForm) : new FormData();
             body.set('action', action);
             body.set('token', scanForm.querySelector('input[name="token"]').value);
             body.set('tab', tab);
-            if (job) body.set('analysis_job', job);
+            if (requestedJob) body.set('analysis_job', requestedJob);
             body.set('analysis_page', page);
+            if (exportOffset !== null) body.set('export_offset', exportOffset);
             // Named input "action" must never shadow the form's URL attribute.
             const response = await fetch(scanForm.getAttribute('action') || location.href, {
                 method: 'POST', body, credentials: 'same-origin', headers: {'X-HDN-Analysis': '1'}
@@ -104,6 +110,49 @@
             button.textContent = active ? 'Resume review' : label;
         });
         output.addEventListener('click', async event => {
+            const exportButton = actionPrefix === 'agents' ? event.target.closest('[data-hdn-export-agents]') : null;
+            if (exportButton && job) {
+                const exportJob = job;
+                const status = output.querySelector('[data-hdn-export-status]');
+                exportButton.disabled = true;
+                status.textContent = 'Preparing CSV…';
+                try {
+                    const lines = ['\uFEFFagent,hits\r\n'];
+                    let offset = 0, count = 0;
+                    do {
+                        const value = (await request('agents_export', 1, false, offset, exportJob)).export;
+                        if (!value || !Array.isArray(value.rows) || !Number.isSafeInteger(value.total) || value.total < 0) {
+                            throw new Error('The panel returned an invalid CSV export.');
+                        }
+                        for (const row of value.rows) {
+                            if (!Array.isArray(row) || row.length !== 2 || typeof row[0] !== 'string' || !Number.isSafeInteger(row[1]) || row[1] < 0) {
+                                throw new Error('The panel returned an invalid agent row.');
+                            }
+                            lines.push(csvAgent(row[0]) + ',' + row[1] + '\r\n');
+                        }
+                        count += value.rows.length;
+                        if (value.next_offset !== null && (value.next_offset !== count || count <= offset)) {
+                            throw new Error('The CSV export did not advance. Try again.');
+                        }
+                        offset = value.next_offset;
+                        status.textContent = `Exporting ${count} / ${value.total} agents…`;
+                        if (offset === null && count !== value.total) throw new Error('The CSV export is incomplete. Try again.');
+                    } while (offset !== null);
+                    const url = URL.createObjectURL(new Blob(lines, {type:'text/csv;charset=utf-8'}));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = 'webuzo-de-noise-agents-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+                    document.body.appendChild(link);
+                    try { link.click(); } finally {
+                        link.remove();
+                        setTimeout(() => URL.revokeObjectURL(url), 10000);
+                    }
+                    status.textContent = `CSV downloaded: ${count} agents.`;
+                } catch (error) {
+                    status.textContent = error.message;
+                } finally { exportButton.disabled = false; }
+                return;
+            }
             const page = event.target.closest('[data-hdn-analysis-page]');
             if (!page || !job) return;
             try { display(await request(actionPrefix + '_status', Number(page.dataset.hdnAnalysisPage))); }

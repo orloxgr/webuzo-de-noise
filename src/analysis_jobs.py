@@ -1,5 +1,6 @@
 """Root-private, resumable panel observation of complete read-only reviews."""
 import json
+from contextlib import contextmanager
 import hashlib
 import os
 from pathlib import Path
@@ -107,6 +108,46 @@ def launch_worker(state, job):
                           file_actions=actions, setsid=True)
 
 
+@contextmanager
+def report_database(path):
+    database = path / 'report.sqlite'
+    # The containing job has already passed actor, scope and kind checks.
+    with storage.parent(database):
+        info = database.lstat()
+        import stat
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
+            raise ValueError('Untrusted analysis report database')
+    connection = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
+    try:
+        yield connection
+    finally:
+        connection.close()
+
+
+def export_agents(state, job, actor, offset=0):
+    """Read a bounded transfer chunk from one completed, immutable inventory."""
+    if type(offset) is not int or offset < 0:
+        raise ValueError('Invalid export offset')
+    path = owned(state, job, actor, kind='agents')
+    if read(path, 'status.json')['state'] != 'complete':
+        raise ValueError('Complete the agent analysis before exporting')
+    analysis = read(path, 'result.json')
+    total = analysis['findings_total']
+    if offset > total:
+        raise ValueError('Invalid export offset')
+    if analysis.get('findings_database'):
+        with report_database(path) as connection:
+            rows = [json.loads(row[0]) for row in connection.execute(
+                'SELECT payload FROM findings ORDER BY rank,count DESC,site,path LIMIT ? OFFSET ?', (500, offset))]
+    else:
+        rows = analysis['findings'][offset:offset + 500]
+    if not rows and offset < total:
+        raise ValueError('The agent report is incomplete')
+    end = offset + len(rows)
+    return dict(rows=[[row['value'], row['count']] for row in rows], total=total,
+                next_offset=end if end < total else None)
+
+
 def status(state, job, actor, page=1, kind="scan", owner=None):
     if type(page) is not int or page < 1:
         raise ValueError('Invalid report page')
@@ -142,20 +183,10 @@ def status(state, job, actor, page=1, kind="scan", owner=None):
         pages = max(1, (total + 19) // 20)
         page = min(page, pages)
         if analysis.get('findings_database'):
-            database = path / 'report.sqlite'
-            # Ownership checks happen before SQLite opens the read-only URI.
-            with storage.parent(database):
-                info = database.lstat()
-                import stat
-                if not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o077:
-                    raise ValueError('Untrusted analysis report database')
-            connection = sqlite3.connect(database.as_uri() + '?mode=ro', uri=True)
-            try:
+            with report_database(path) as connection:
                 query = ('SELECT payload FROM events ORDER BY stamp DESC LIMIT ? OFFSET ?' if kind == 'activity' else
                          'SELECT payload FROM findings ORDER BY rank,count DESC,site,path LIMIT ? OFFSET ?')
                 analysis['findings'] = [json.loads(row[0]) for row in connection.execute(query, (20, (page - 1) * 20))]
-            finally:
-                connection.close()
         else:
             analysis['findings'] = analysis['findings'][(page - 1) * 20:page * 20]
         analysis['page'] = page

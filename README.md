@@ -27,7 +27,7 @@ WordPress failed-login bans use Fail2ban on the web ports.
 
 ## Install
 
-1. Download `webuzo-de-noise-0.2.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.2.1.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
@@ -36,7 +36,9 @@ WordPress failed-login bans use Fail2ban on the web ports.
 
 Use **Analyze current agents** in User-Agents or **Analyze PHP 404s** under
 selected PHP file bans to inspect recorded traffic. Select results and choose
-**Append selected to lists**, then **Save & Apply**. Appending preserves existing
+**Append selected to lists**, then **Save & Apply**. **Export CSV** downloads all
+agent names and hit counts from the completed analysis, across every result page.
+Appending preserves existing
 entries, list switches, thresholds and exceptions. The analyses run in the
 background, support cancellation and resume, and paginate the complete results.
 
