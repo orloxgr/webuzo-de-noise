@@ -33,6 +33,9 @@ class InstallerTests(unittest.TestCase):
         binary = self.root / 'nginx'; binary.touch()
         self.enterContext(patch.object(webuzo, 'NGINX', binary))
         self.enterContext(patch.object(webuzo, 'collect', return_value=[]))
+        self.enterContext(patch.object(installer.engine.webmail, 'discover', return_value={
+            'key': 'root/webmail', 'domain': 'webmail', 'owner': 'root', 'kind': 'mail',
+            'shared_webmail': True, 'supported': True}))
         self.enterContext(patch.object(installer.engine, 'locked', side_effect=contextlib.nullcontext))
         self.enterContext(patch.object(installer.engine, 'recover'))
         self.apply = self.enterContext(patch.object(installer.engine, 'apply', return_value={'changed_files': 0}))

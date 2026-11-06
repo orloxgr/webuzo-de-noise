@@ -23,20 +23,20 @@ def log_uids():
     return {0, pwd.getpwnam(users[0].decode('ascii')).pw_uid} if users else {0}
 
 
-def check_log(fd):
+def check_log(fd, uids=None):
     info = os.fstat(fd)
-    if not stat.S_ISREG(info.st_mode) or info.st_uid not in log_uids() or info.st_mode & 0o022:
+    if not stat.S_ISREG(info.st_mode) or info.st_uid not in (log_uids() if uids is None else uids) or info.st_mode & 0o022:
         raise ValueError('Refusing an untrusted Nginx log')
     return info
 
 
-def log_stream(path):
+def log_stream(path, uids=None):
     """Pin the root-controlled directory and refuse links/FIFOs/writable logs."""
     with parent(path) as directory:
         fd = os.open(Path(path).name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     stream = os.fdopen(fd, 'rb')
     try:
-        check_log(stream.fileno())
+        check_log(stream.fileno(), uids)
     except Exception:
         stream.close()
         raise
@@ -76,8 +76,10 @@ def read(path):
             return data
 
 
-def replace(path, data, mode=0o644):
+def replace(path, data, mode=0o644, gid=None):
     path = Path(path)
+    if gid is not None and (type(gid) is not int or not 0 <= gid < 4294967295):
+        raise ValueError('Invalid managed file group')
     with parent(path) as fd:
         temporary = '.' + path.name + '.tmp-' + secrets.token_hex(8)
         if data is None:
@@ -90,6 +92,8 @@ def replace(path, data, mode=0o644):
                                  mode, dir_fd=fd)
             try:
                 with os.fdopen(descriptor, 'wb') as stream:
+                    if gid is not None:
+                        os.fchown(stream.fileno(), -1, gid)
                     os.fchmod(stream.fileno(), mode)
                     stream.write(data); stream.flush(); os.fsync(stream.fileno())
                 os.replace(temporary, path.name, src_dir_fd=fd, dst_dir_fd=fd)

@@ -15,7 +15,8 @@ HOME = Path('/usr/local/webuzo')
 NGINX = Path('/usr/local/apps/nginx/sbin/nginx')
 CONFIG = Path('/usr/local/apps/nginx/etc/nginx.conf')
 VHOST = Path('/usr/local/apps/nginx/etc/conf.d/webuzoVH.conf')
-GLOBAL = Path('/usr/local/apps/nginx/etc/conf.d/00-webuzo-de-noise.conf')
+GLOBAL = Path('/etc/webuzo-de-noise/http.conf')
+GLOBAL_CUSTOM = Path('/usr/local/apps/nginx/etc/conf.d/custom.conf')
 CUSTOM = Path('/var/webuzo-data/nginx/custom/domains')
 STATE = Path('/var/lib/webuzo-de-noise')
 SNIPPETS = Path('/etc/webuzo-de-noise/domains')
@@ -291,8 +292,12 @@ def cli(task, **values):
 
 
 def reload_nginx():
+    return reload_instance(NGINX, CONFIG)
+
+
+def reload_instance(binary, config, nodes=None):
     """Use Nginx's configured native PID; do not assume a systemd MainPID."""
-    nodes = directives(native_read(CONFIG).decode())
+    nodes = directives(native_read(config).decode()) if nodes is None else nodes
     values = [args for name, args, child in nodes if name == 'pid' and child is None]
     if len(values) != 1 or len(values[0]) != 1 or not values[0][0].startswith('/'):
         raise ValueError('A single absolute native Nginx pid path is required')
@@ -301,8 +306,8 @@ def reload_nginx():
         raise ValueError('Invalid native Nginx master PID')
     master = int(raw)
     proc = Path('/proc') / raw
-    if (proc / 'exe').resolve() != NGINX.resolve() or proc.stat().st_uid != 0:
-        raise ValueError('PID does not belong to the native website Nginx master')
+    if (proc / 'exe').resolve() != binary.resolve() or proc.stat().st_uid != 0:
+        raise ValueError('PID does not belong to the native Nginx master')
     def workers():
         children = (proc / 'task' / raw / 'children').read_text().split()
         active = set()
@@ -315,7 +320,7 @@ def reload_nginx():
                 pass
         return active
     before = workers()
-    run(NGINX, '-t')
+    run(binary, '-t')
     os.kill(master, signal.SIGHUP)
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:

@@ -17,7 +17,7 @@ def fixture_read(path):
     return path.read_bytes() if path.exists() else None
 
 
-def fixture_replace(path, data, mode=0o644):
+def fixture_replace(path, data, mode=0o644, gid=None):
     path = Path(path)
     if data is None:
         path.unlink(missing_ok=True)
@@ -36,6 +36,8 @@ class TransactionTests(unittest.TestCase):
         self.domain_file = self.snippets / 'example.test.conf'
         self.patches = [patch.object(engine, 'STATE', self.state),
                         patch.object(engine, 'GLOBAL', self.global_file),
+                        patch.object(webuzo, 'GLOBAL', self.global_file),
+                        patch.object(webuzo, 'GLOBAL_CUSTOM', self.directory / 'native-global-custom.conf'),
                         patch.object(webuzo, 'CUSTOM', self.custom),
                         patch.object(webuzo, 'SNIPPETS', self.snippets),
                         patch.object(engine, 'reload_nginx'),
@@ -99,6 +101,29 @@ class TransactionTests(unittest.TestCase):
         self.assertFalse(self.domain_file.exists())
         self.assertFalse(self.global_file.exists())
         self.assertEqual(neighbor.read_text(), 'unrelated')
+
+    def test_failed_panel_reload_restores_both_native_instances_and_policy_history(self):
+        mail = dict(key='root/webmail', domain='webmail', owner='root', kind='mail', shared_webmail=True,
+                    supported=True, native_logs=['/var/log/native-panel.log'])
+        snippet = self.directory / 'webmail.conf'
+        custom = self.directory / 'panel-custom.conf'
+        with patch.object(engine.webmail, 'SNIPPET', snippet), patch.object(engine.webmail, 'CUSTOM', custom), \
+                patch.object(engine, 'verify'), patch.object(engine.webmail, 'verify'), \
+                patch.object(engine, 'run', return_value=''), patch.object(engine.webmail, 'reload') as reload:
+            engine.apply(DEFAULT, [self.site, mail])
+            old = self.global_file.read_bytes()
+            candidate = copy.deepcopy(DEFAULT)
+            candidate.update(mode='enforce', mail_protection=True, agents=['Scanner'])
+            reload.side_effect = [RuntimeError('Panel reload failed'), None]
+            with self.assertRaisesRegex(RuntimeError, 'Panel reload failed'):
+                engine.apply(candidate, [self.site, mail])
+            self.assertEqual(reload.call_count, 2)
+            self.assertEqual(self.global_file.read_bytes(), old)
+            self.assertFalse(snippet.exists())
+            self.assertFalse(custom.exists())
+            self.assertFalse((self.state / engine.webmail.HISTORY).exists())
+            self.assertFalse((self.state / 'transaction.json').exists())
+            self.assertEqual(json.loads((self.state / 'policy.json').read_text()), DEFAULT)
 
 
 class AuthorizationTests(unittest.TestCase):

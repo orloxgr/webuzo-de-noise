@@ -120,6 +120,19 @@ class Jobs(unittest.TestCase):
         self.assertEqual(request['owner'],'alice')
         self.assertEqual(request['kind'],'activity')
 
+    def test_shared_mail_logs_require_the_discovered_administrator_service_scope(self):
+        import activity
+        sites = [dict(key='alice/webmail', owner='alice', domain='webmail', kind='web'),
+                 dict(key='root/webmail', owner='root', domain='webmail', kind='mail', shared_webmail=True)]
+        for owner, actor, expected in [('alice', 'alice', False), (None, 'root', True)]:
+            with patch.object(analysis_jobs, 'launch_worker', return_value=99999999):
+                job = analysis_jobs.start(self.root, sites, actor, 'all', 17, kind='activity', owner=owner)['id']
+            with patch.object(analysis_jobs.os, 'nice'), patch.object(analysis_jobs.signal, 'signal'), \
+                    patch.object(activity, 'summary', return_value={}) as summary:
+                analysis_jobs.worker(self.root, job)
+            self.assertEqual(summary.call_args.kwargs['include_webmail'], expected)
+            self.assertEqual(analysis_jobs.read(analysis_jobs.directory(self.root, job), 'status.json')['state'], 'complete')
+
     def test_cancellation_before_worker_handler_is_loaded_stays_cancelled(self):
         job,path=self.prepared()
         analysis_jobs.cancel(self.root,job,'admin')

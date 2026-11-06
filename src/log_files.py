@@ -22,8 +22,8 @@ def compressed(path):
 
 
 @contextmanager
-def opened(path):
-    with storage.log_stream(path) as raw:
+def opened(path, uids=None):
+    with storage.log_stream(path, uids) as raw:
         if Path(path).suffix == '.gz':
             with gzip.GzipFile(fileobj=raw) as stream: yield stream, raw
         elif Path(path).suffix == '.bz2':

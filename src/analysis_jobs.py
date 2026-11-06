@@ -212,7 +212,8 @@ def worker(state, job):
                 import activity
                 result = activity.summary({site['domain'] for site in sites}, now=request.get('requested_at'),
                     minutes=request['minutes'], progress=progress, cancelled=lambda: (path / 'cancel.json').exists(),
-                    report_path=path / 'report.sqlite')
+                    report_path=path / 'report.sqlite', state=state,
+                    include_webmail=any(site.get('shared_webmail') for site in sites))
             else:
                 result = log_analysis.scan(sites, request['target'], request['minutes'], state,
                     request['verify_google'], now=request.get('requested_at'), progress=progress,

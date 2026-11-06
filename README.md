@@ -12,13 +12,19 @@ packages will be published after the Webuzo integration passes its runtime tests
 - Uses Webuzo's plugin lifecycle, panel sessions and privilege separation.
 - Uses the documented custom Nginx configuration extension points.
 - Does not patch Webuzo source, distributed templates, generated virtual hosts,
-  or the panel's own Nginx configuration.
+  or the panel's main Nginx configuration.
 - Existing custom configuration is preserved; conflicting configuration is
   reported instead of overwritten.
 - Account and domain settings are discovered on each server. No server address,
   account name or website is built into the plugin.
 
 Feature coverage and validation are tracked in [FEATURES.md](FEATURES.md).
+
+Optional webmail protection applies the selected User-Agent lists and private-file
+rules to Webuzo's native mail route, including its custom webmail ports. It uses
+the documented [EMPS custom configuration](https://www.webuzo.com/docs/how-tos/how-to-add-custom-conf-in-webuzo-emps-binary/)
+extension. The shared webmail service and its activity are visible to administrators;
+hosting accounts retain access only to their own website activity.
 
 ## Requirements
 

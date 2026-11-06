@@ -23,6 +23,8 @@ class NativeIncludeTests(unittest.TestCase):
         self.snippets = self.root / 'snippets'; self.snippets.mkdir()
         self.enterContext(patch.object(webuzo, 'CUSTOM', self.custom))
         self.enterContext(patch.object(webuzo, 'SNIPPETS', self.snippets))
+        self.enterContext(patch.object(webuzo, 'GLOBAL', self.root / 'http.conf'))
+        self.enterContext(patch.object(webuzo, 'GLOBAL_CUSTOM', self.root / 'native-global-custom.conf'))
         self.path = self.custom / 'example.test.conf'
         self.site = {'domain': 'example.test', 'supported': True}
 
@@ -38,6 +40,25 @@ class NativeIncludeTests(unittest.TestCase):
         _, changes = integration.prepare([], manifest, remove=True)
         integration.write(changes)
         self.assertEqual(self.path.read_text(), original)
+
+    def test_documented_http_custom_file_and_existing_permissions_are_preserved(self):
+        http = webuzo.GLOBAL_CUSTOM
+        original = 'map $http_x_example $other_setting { default 0; }\n'
+        http.write_text(original); http.chmod(0o600)
+        self.path.write_text('# Private administrator configuration\n')
+        self.path.chmod(0o640); os.chown(self.path, 0, 65534)
+        manifest, changes = integration.prepare([self.site], {})
+        integration.write(changes)
+        self.assertIn(str(webuzo.GLOBAL), http.read_text())
+        self.assertEqual(http.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(self.path.stat().st_gid, 65534)
+        _, changes = integration.prepare([], manifest, remove=True)
+        integration.write(changes)
+        self.assertEqual(http.read_text(), original)
+        self.assertEqual(http.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(self.path.stat().st_mode & 0o777, 0o640)
+        self.assertEqual(self.path.stat().st_gid, 65534)
 
     def test_later_administrator_changes_are_preserved_on_remove(self):
         self.path.write_text('# Existing\n')
@@ -68,7 +89,7 @@ class NativeIncludeTests(unittest.TestCase):
         integration.write(changes)
         self.path.unlink()
         next_manifest, changes = integration.prepare([], manifest)
-        self.assertEqual(next_manifest, {})
+        self.assertEqual(set(next_manifest), {integration.HTTP})
         self.assertEqual(changes, [])
         with self.assertRaisesRegex(ValueError, 'missing'):
             integration.prepare([self.site], manifest)

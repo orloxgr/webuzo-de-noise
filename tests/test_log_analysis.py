@@ -88,14 +88,36 @@ class ScanTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def record(self, target, status=200, agent='Googlebot', ip='198.51.100.1', at=None, extra=''):
+    def record(self, target, status=200, agent='Googlebot', ip='198.51.100.1', at=None, extra='', method='GET'):
         at = self.now - 10 if at is None else at
         stamp = datetime.datetime.fromtimestamp(at, datetime.timezone.utc).strftime('%d/%b/%Y:%H:%M:%S %z')
         with self.path.open('a') as out:
-            out.write(f'{ip} - - [{stamp}] "GET {target} HTTP/1.1" {status} 123 "-" "{agent}"{extra}\n')
+            out.write(f'{ip} - - [{stamp}] "{method} {target} HTTP/1.1" {status} 123 "-" "{agent}"{extra}\n')
 
     def scan(self, target='alice/one.test', **kwargs):
         return review.scan(self.sites, target, 30, self.state, now=self.now, **kwargs)
+
+    def test_declared_meta_crawl_space_produces_a_scoped_candidate_without_a_default_rate(self):
+        for i in range(35):
+            self.record('/catalog/?orderby=price&product_count=' + str(i) + '&add-to-cart=' + str(i),
+                        agent='Mozilla/5.0 (compatible; Meta-ExternalAgent/1.1)')
+        row = self.scan()['findings'][0]
+        self.assertEqual(row['kind'], 'crawl')
+        self.assertEqual(row['filter_candidate']['target'], 'alice/one.test')
+        self.assertEqual(row['filter_candidate']['observed_crawlers'], ['meta-externalagent'])
+        self.assertEqual(row['verified_google'], 0)
+        self.assertNotIn('rate', row['filter_candidate'])
+        self.assertEqual(list(self.state.iterdir()), [])
+
+    def test_busy_cart_fragments_remain_an_application_diagnosis_without_a_filter_candidate(self):
+        for i in range(75):
+            self.record('/?wc-ajax=get_refreshed_fragments', method='POST', agent='SERankingBacklinksBot/1.0')
+        row = self.scan()['findings'][0]
+        self.assertEqual(row['title'], 'Busy application endpoint')
+        self.assertEqual(row['methods'], {'POST': 75})
+        self.assertEqual(row['agents'], {'SERankingBacklinksBot': 75})
+        self.assertNotIn('filter_candidate', row)
+        self.assertIn('do not block the whole endpoint', row['advice'])
 
     def test_filter_diversity_suggests_site_review_not_a_ban_or_a_rate(self):
         for i in range(35):self.record('/catalog/?season='+str(i))

@@ -11,7 +11,8 @@ import log_files
 LOG = Path('/var/log/webuzo-de-noise/matches.log')
 
 
-def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report_path=None):
+def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report_path=None, state=None,
+            include_webmail=False):
     if os.name != 'posix':
         raise ValueError('Activity logs are available on the Linux server')
     if type(minutes) is not int or minutes < 1:
@@ -87,6 +88,13 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                 connection.execute('INSERT INTO events VALUES(?,?,?,?,?,?)', (stamp, json.dumps(payload), domain, rule, outcome, agent))
         finally:
             context.__exit__(None, None, None)
+    mail_coverage = {}
+    if state is not None and include_webmail:
+        import webmail
+        if webmail.DOMAIN in domains:
+            for stamp, payload in webmail.events(state, cutoff, now, mail_coverage, progress, cancelled):
+                connection.execute('INSERT INTO events VALUES(?,?,?,?,?,?)',
+                    (stamp, json.dumps(payload), payload['domain'], payload['rule'], payload['outcome'], payload['agent']))
     connection.commit()
     total = connection.execute('SELECT COUNT(*) FROM events').fetchone()[0]
     rows = [dict(domain=d, rule=r, outcome=o, agent=a, count=n) for d,r,o,a,n in connection.execute(
@@ -94,4 +102,5 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
     recent = [] if report_path is not None else [json.loads(row[0]) for row in connection.execute('SELECT payload FROM events ORDER BY stamp DESC')]
     connection.close()
     return dict(available=True, window_minutes=minutes, sample_truncated=False, bytes_read=scanned,
-                total=total, rows=rows, recent=recent, findings_total=total, findings_database=report_path is not None)
+                total=total, rows=rows, recent=recent, findings_total=total, findings_database=report_path is not None,
+                webmail=mail_coverage)

@@ -27,16 +27,20 @@ import analysis_jobs
 import webuzo
 import integration
 import web_bans
+import webmail
 
 STATE = webuzo.STATE
 GLOBAL = webuzo.GLOBAL
 run = webuzo.run
-collect = webuzo.collect
+
+
+def collect():
+    return webuzo.collect() + [webmail.discover()]
 
 
 def managed_path(value):
     path = Path(value)
-    if path == GLOBAL:
+    if path in (GLOBAL, webmail.SNIPPET):
         return path
     if path.parent != webuzo.SNIPPETS or not path.name.endswith('.conf'):
         raise ValueError('Invalid managed configuration path')
@@ -81,7 +85,7 @@ def restore(record):
         if not path.parent.exists() and text is None:
             continue
         storage.owned(path)
-        storage.replace(path, None if text is None else text.encode())
+        storage.replace(path, None if text is None else text.encode(), 0o600)
 
 
 def recover():
@@ -94,8 +98,11 @@ def recover():
     restore(record)
     run(webuzo.NGINX, '-t')
     reload_nginx()
+    if record.get('mail_touched'):
+        run(webmail.BINARY, '-t')
+        webmail.reload()
     enumeration.apply(record.get('enumeration_changes', []), reverse=True)
-    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, domain_bans.APPLIED, enumeration.MANIFEST):
+    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, domain_bans.APPLIED, enumeration.MANIFEST, webmail.HISTORY):
         if name not in record:
             continue  # Recovery journals from an older installed generation.
         old = record[name]
@@ -112,7 +119,13 @@ def apply(policy, sites, remove=False, global_blocks=None):
         policy['domain_bans']['sites'] = {key: value for key, value in policy['domain_bans']['sites'].items() if key in known}
         for kind in ('files', 'queries'):
             policy['probe_exceptions'][kind] = {key: paths for key, paths in policy['probe_exceptions'][kind].items() if key in known}
-    custom_manifest, custom_changes = integration.prepare(sites, load('custom-manifest.json', {}), remove=remove)
+    mail_site = next((site for site in sites if site.get('shared_webmail')), None)
+    mail_profile = webmail.profile(policy) if not remove else dict(mode='off', agents=[], scanners=False)
+    mail_enabled = bool(mail_site and mail_profile['mode'] != 'off')
+    if mail_enabled and not mail_site['supported']:
+        raise ValueError(mail_site['reason'])
+    custom_manifest, custom_changes = integration.prepare(sites, load('custom-manifest.json', {}),
+                                                        remove=remove, mail=mail_enabled)
     if global_blocks is None:
         global_blocks = load(web_bans.APPLIED, [])
     global_blocks = sorted(set(global_blocks)) if not remove else []
@@ -121,8 +134,12 @@ def apply(policy, sites, remove=False, global_blocks=None):
         policy, sites, load(enumeration.MANIFEST, {}), site_mode, remove=remove)
     domain_blocks = domain_bans.desired(policy, sites, STATE) if not remove else {}
     if not remove:
-        desired[str(GLOBAL)] = global_config(policy, sites, domain_blocks, global_blocks)
+        desired[str(GLOBAL)] = global_config(policy, [s for s in sites if not s.get('shared_webmail')], domain_blocks, global_blocks)
         for site in sites:
+            if site.get('shared_webmail'):
+                if mail_enabled:
+                    desired[str(webmail.SNIPPET)] = webmail.compile(mail_profile)
+                continue
             site['global_bans'] = bool(global_blocks)
             if site['supported'] and (site.get('kind') != 'mail' or policy['mail_protection']):
                 for path in site['paths']:
@@ -142,7 +159,9 @@ def apply(policy, sites, remove=False, global_blocks=None):
             changes[name] = next_text
     # Preserve policy + ownership manifest in the same recovery journal. A
     # crash after reload but before state commit restores the old policy too.
-    record = {'schema': 1, 'before': before,
+    mail_touched = str(webmail.SNIPPET) in changes or any(row['path'] == str(webmail.CUSTOM) for row in custom_changes)
+    record = {'schema': 1, 'before': before, 'mail_touched': mail_touched,
+              webmail.HISTORY: load(webmail.HISTORY, None),
               'policy.json': load('policy.json', None), 'manifest.json': load('manifest.json', None),
               domain_bans.APPLIED: load(domain_bans.APPLIED, None),
               enumeration.MANIFEST: load(enumeration.MANIFEST, None),
@@ -153,11 +172,20 @@ def apply(policy, sites, remove=False, global_blocks=None):
     try:
         enumeration.apply(companion_changes)
         for name, text in changes.items():
-            storage.replace(name, None if text is None else text.encode())
+            storage.replace(name, None if text is None else text.encode(), 0o600)
         integration.write(custom_changes)
-        verify(desired)
-        if changes or custom_changes:
+        verify([path for path in desired if path != str(webmail.SNIPPET)])
+        if mail_enabled:
+            webmail.verify()
+        elif mail_touched:
+            run(webmail.BINARY, '-t')
+        web_touched = any(path != str(webmail.SNIPPET) for path in changes) or any(row['path'] != str(webmail.CUSTOM) for row in custom_changes)
+        if web_touched:
             reload_nginx()
+        if mail_touched:
+            webmail.reload()
+        if mail_site or mail_touched:
+            webmail.remember(STATE, mail_profile, mail_site.get('native_logs', []) if mail_site else [])
         changed_roots = {row['root'] for row in companion_changes if row['after'] is not None}
         for site in sites:
             entry = companion_manifest.get(site['key'])

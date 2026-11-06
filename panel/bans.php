@@ -1,5 +1,6 @@
 <?php
 if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+$webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => ($site['kind'] ?? 'web') === 'web'));
  $ban = $policy['bans'] ?? []; $banState = $data['bans'] ?? []; ?>
 <h2 class="u-mb20">Automatic IP bans</h2>
 <label class="form-label u-block u-mb20"><input form="hdn-settings" type="checkbox" name="bans_enabled" <?= !empty($ban['enabled']) ? 'checked' : '' ?>> Enable automatic server-wide web bans</label>
@@ -49,13 +50,13 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 <label class="form-label u-block u-mb10">Minimum different URL paths
 <input form="hdn-settings" class="form-control" type="number" name="bans_any_404_min_distinct_paths" min="1" value="<?= $escape($notFound['min_distinct_paths'] ?? 3) ?>" required title="Require this many different URL paths as well as the request threshold within the counting window. Query strings do not create different paths. Set 1 to allow repeated requests to one path."></label>
 <p class="u-mb20">Both limits must be reached. Counts apply per IP across selected web domains. Other status codes do not count. Explicit security probes retain their separate stricter counters. Existing bans are preserved.</p>
-<?php if (!empty($data['sites'])): ?>
+<?php if (!empty($webSites)): ?>
 <h3 class="u-mb10">Probe exceptions by domain</h3>
 <label class="form-label" for="hdn-probe-domain">Domain</label>
 <select class="form-select u-mb10" id="hdn-probe-domain">
-<?php foreach ($data['sites'] as $site): ?><option value="<?= $escape($site['key']) ?>"><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option><?php endforeach; ?>
+<?php foreach ($webSites as $site): ?><option value="<?= $escape($site['key']) ?>"><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option><?php endforeach; ?>
 </select>
-<?php foreach ($data['sites'] as $index => $site): ?>
+<?php foreach ($webSites as $index => $site): ?>
 <div data-hdn-probe-domain="<?= $escape($site['key']) ?>" <?= $index ? 'hidden' : '' ?>>
 <?php foreach (['files' => 'Allowed PHP paths', 'queries' => 'Allowed query endpoints (for example a legitimate file manager)'] as $kind => $label): ?>
 <label class="form-label u-block u-mb10"><?= $escape($label) ?> — one exact URL path per line
@@ -66,7 +67,7 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 <?php endif; ?>
 <label class="form-label" for="bans-targets">Domains that can trigger a ban (empty selection means all)</label>
 <select form="hdn-settings" class="form-select u-mb20" id="bans-targets" name="bans_targets[]" multiple size="4">
-<?php foreach ($data['sites'] ?? [] as $site): ?>
+<?php foreach ($webSites as $site): ?>
 <option value="<?= $escape($site['key']) ?>" <?= in_array($site['key'], $ban['targets'] ?? [], true) ? 'selected' : '' ?>><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option>
 <?php endforeach; ?></select>
 <label class="form-label" for="bans-ignore">Never ban — one IP address or CIDR network per line</label>

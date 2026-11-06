@@ -98,7 +98,7 @@ def install():
     with engine.locked():
         engine.recover()
         previous_active = engine.load('active.json', None)
-        sites = webuzo.collect()
+        sites = engine.collect()
         policy = engine.validate(engine.load('policy.json', engine.DEFAULT))
         result = engine.apply(policy, sites)
         try:
@@ -126,7 +126,7 @@ def remove():
         wordpress.uninstall(webuzo.STATE, webuzo.run)
         if preference is not None:
             storage.replace(webuzo.STATE / wordpress.SETTINGS, storage.json_bytes(preference), 0o600)
-        result = engine.synchronize(policy, webuzo.collect(), remove=True)
+        result = engine.synchronize(policy, engine.collect(), remove=True)
         for path in artifacts():
             owned_artifact(path, None)
         storage.replace(webuzo.STATE / 'active.json', storage.json_bytes({'active': False}), 0o600)

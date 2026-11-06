@@ -5,6 +5,7 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 <?php $activity = $data['analysis'] ?? null; if (is_array($activity)): ?>
 <p class="u-mb10">Matched requests · last <?= $escape($activity['window_minutes']) ?> minutes · <?= $escape($activity['total']) ?> in available retained logs</p>
 <p class="u-mb10">User-Agent is the value declared by the client. Older records show “Not recorded”; an empty header shows “Not sent”.</p>
+<?php if (!empty($activity['webmail'])): ?><p class="u-mb10"><?= !empty($activity['webmail']['available']) ? 'Webmail matches use native logs, saved policy and response status. Policy transition seconds are shown as matched.' : 'Native webmail activity logs are unavailable.' ?></p><?php endif; ?>
 <div class="hdn-table-scroll"><table class="table"><thead><tr><th>Domain</th><th>Rule</th><th>User-Agent</th><th>Outcome</th><th>Requests</th></tr></thead><tbody>
 <?php foreach ($activity['rows'] ?? [] as $row): ?><tr>
 <td><?= $escape($row['domain']) ?></td><td><?= $escape($row['rule']) ?></td>

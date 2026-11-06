@@ -45,9 +45,9 @@ SENSITIVE = {'key', 'token', 'nonce', '_wpnonce', 'password', 'pass', 'email', '
              'session', 'sessionid', 'sid', 'code', 'state', 'csrf', 'csrf_token', 'access_token',
              'refresh_token', 'api_key', 'api_token', 'action'}
 CLAIMS = ('Googlebot', 'bingbot', 'Applebot', 'Baiduspider', 'PetalBot', 'ibou-search',
-          'meta-webindexer', 'facebookexternalhit', 'Twitterbot', 'Slackbot', 'Discordbot',
+          'meta-externalagent', 'meta-webindexer', 'facebookexternalhit', 'Twitterbot', 'Slackbot', 'Discordbot',
           'WhatsApp', 'TelegramBot', 'GPTBot', 'ClaudeBot', 'CCBot', 'Amazonbot',
-          'Reflectionbot', 'LinkupBot', 'AhrefsBot', 'SemrushBot', 'sqlmap', 'Nikto', 'Nuclei')
+          'Reflectionbot', 'LinkupBot', 'AhrefsBot', 'SemrushBot', 'SERankingBacklinksBot', 'sqlmap', 'Nikto', 'Nuclei')
 
 
 def selection(sites, target, minutes):

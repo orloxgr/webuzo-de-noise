@@ -157,7 +157,7 @@ def report(state, enabled=False, page=1, view='active'):
 def synchronize(policy, sites, state, native, now=None, remove=False, read_events=True):
     now = time.time() if now is None else now
     settings = policy['bans']
-    eligible = {site['domain'] for site in sites if site.get('supported') and not site.get('suspended') and
+    eligible = {site['domain'] for site in sites if not site.get('shared_webmail') and site.get('supported') and not site.get('suspended') and
                 site_mode(policy, site) == 'enforce' and (not settings['targets'] or site['key'] in settings['targets'])}
     enabled = settings['enabled'] and bool(eligible) and not remove
     if not enabled and not (Path(state) / 'bans.sqlite').exists():

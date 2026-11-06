@@ -74,15 +74,16 @@ foreach (isset($ruleModule) ? [$ruleModule => $ruleModule === 'filters' ? 'Filte
             <p id="hdn-robots-message" class="u-mt10" role="status"></p>
         </div>
         <?php endif; ?>
-        <?php if ($module === 'static' && !empty($data['sites'])): ?>
+        <?php $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => ($site['kind'] ?? 'web') === 'web'));
+        if ($module === 'static' && !empty($webSites)): ?>
         <h3 class="u-mt20 u-mb10">File exceptions by domain</h3>
         <label class="form-label" for="hdn-exception-domain">Domain</label>
         <select form="hdn-settings" class="form-select u-mb10" id="hdn-exception-domain">
-            <?php foreach ($data['sites'] as $site): ?>
+            <?php foreach ($webSites as $site): ?>
             <option value="<?= $escape($site['key']) ?>"><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option>
             <?php endforeach; ?>
         </select>
-        <?php foreach ($data['sites'] as $index => $site):
+        <?php foreach ($webSites as $index => $site):
             $exceptions = $policy['static_exceptions'][$site['key']] ?? []; ?>
         <div data-hdn-exception-domain="<?= $escape($site['key']) ?>" <?= $index !== 0 ? 'hidden' : '' ?>>
             <label class="form-label u-block" for="hdn-exceptions-<?= $index ?>">Allowed file paths — one per line</label>
