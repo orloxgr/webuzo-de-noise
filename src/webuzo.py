@@ -170,11 +170,12 @@ def servers():
         if len(values.get('server_name', [])) != 1:
             continue
         def uses_cache(nodes):
-            return any((key == 'proxy_cache' and arguments != ['off']) or
+            return any((key in ('proxy_cache', 'fastcgi_cache') and arguments != ['off']) or
                        (block is not None and uses_cache(block))
                        for key, arguments, block in nodes)
         result.append({'names': values['server_name'][0],
                        'roots': values.get('root', []),
+                       'access_logs': [args[0] for args in values.get('access_log', []) if args],
                        'cache': uses_cache(children),
                        'includes': [v[0] for v in values.get('include', []) if len(v) == 1],
                        'limits': has_limits(children)})
@@ -190,21 +191,31 @@ def collect():
     accounts = users()
     blocks = servers()
     result = []
-    seen = set()
     domains = list(native_list('domains').values())
     canonical_rows = {(row['user'], row['domain']): row for row in domains}
+    groups = {}
     for row in domains:
         owner, name = account(row['user']), domain(row['domain'])
         if owner not in accounts:
             raise ValueError('Domain refers to an unavailable hosting account')
         matches = [block for block in blocks if name in block['names']]
-        # Aliases sharing a native server block share policy and rate budgets.
-        canonical = domain(matches[0]['names'][0]) if matches else name
-        matches = [block for block in blocks if canonical in block['names']]
+        canonical = name
+        visited = set()
+        while canonical_rows[(owner, canonical)].get('type') == 'alias':
+            if canonical in visited:
+                raise ValueError('Recursive native domain alias')
+            visited.add(canonical)
+            canonical = domain(canonical_rows[(owner, canonical)]['alias'])
+            if (owner, canonical) not in canonical_rows:
+                raise ValueError('Native alias target does not belong to its account')
+        if canonical == name and matches:
+            canonical = domain(matches[0]['names'][0])
+        groups.setdefault((owner, canonical), set()).add(name)
+    for (owner, canonical), names in groups.items():
+        # Webuzo can generate separate server blocks for native aliases. Their
+        # custom includes still load one canonical policy and rate-budget key.
+        matches = [block for block in blocks if names.intersection(block['names'])]
         key = owner + '/' + canonical
-        if key in seen:
-            continue
-        seen.add(key)
         custom = CUSTOM / (canonical + '.conf')
         snippet = SNIPPETS / (canonical + '.conf')
         primary = canonical_rows.get((owner, canonical))
@@ -220,7 +231,7 @@ def collect():
             reason = 'Unsupported or ambiguous native document root'
         elif any(block['limits'] for block in matches):
             reason = 'Native virtual host already defines request limits'
-        elif not all(str(custom) in b['includes'] for b in matches):
+        elif not all(str(CUSTOM / (domain(b['names'][0]) + '.conf')) in b['includes'] for b in matches):
             reason = 'Native custom include is missing; rebuild this domain through Webuzo'
         else:
             reason = ''
@@ -231,7 +242,12 @@ def collect():
                        'supported': not reason, 'reason': reason,
                        'paths': [str(snippet)] if not reason else [],
                        'roots': {str(snippet): root}, 'custom': str(custom),
-                       'include_loaded': bool(matches) and all(str(custom) in b['includes'] for b in matches)})
+                       'custom_domains': sorted({domain(b['names'][0]) for b in matches}),
+                       'log_domains': sorted({domain(b['names'][0]) for b in matches}),
+                       'native_access_logging': bool(matches) and all(
+                           '/usr/local/apps/nginx/var/log/' + domain(b['names'][0]) + '.log' in b.get('access_logs', [])
+                           for b in matches),
+                       'include_loaded': bool(matches) and all(str(CUSTOM / (domain(b['names'][0]) + '.conf')) in b['includes'] for b in matches)})
     return sorted(result, key=lambda site: site['key'])
 
 
@@ -304,7 +320,10 @@ def reload_nginx():
     deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         current = workers()
-        if current - before:
+        # A newly spawned worker can appear before the master tells every old
+        # worker to stop accepting connections. Require that transition too;
+        # graceful workers may continue serving their existing connections.
+        if current - before and not current & before:
             return
         time.sleep(.05)
     raise RuntimeError('Nginx did not start new workers after reload')

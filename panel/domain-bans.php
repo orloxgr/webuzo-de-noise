@@ -1,4 +1,6 @@
-<?php $scopedBans = $data['domain_bans'] ?? []; $canDomainEdit = !empty($scopedBans['can_edit']); $editableSites = 0; ?>
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+ $scopedBans = $data['domain_bans'] ?? []; $canDomainEdit = !empty($scopedBans['can_edit']); $editableSites = 0; ?>
 <h2 class="u-mb20">Domain automatic bans</h2>
 <p class="u-mb20">Enable additional protection for selected domains. These bans affect web traffic to that domain and its aliases only. Administrator rules always apply; trigger lists, thresholds and exceptions are managed by the administrator.</p>
 <?php if (!empty($scopedBans['error'])): ?><div class="alert alert-danger u-mb20"><?= $escape($isAdmin ? $scopedBans['error'] : 'Domain ban status is temporarily unavailable.') ?></div><?php endif; ?>

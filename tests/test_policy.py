@@ -93,7 +93,7 @@ class PolicyTests(unittest.TestCase):
         self.assertNotIn('wp-json', text)
         self.assertNotIn('$args', text)
         self.assertNotIn('$http_x_forwarded_for', text)
-        self.assertIn('$server_name:$binary_remote_addr', text)
+        self.assertIn('$hdn_site:$binary_remote_addr', text)
 
     def test_off_cannot_deny_requests(self):
         policy = copy.deepcopy(DEFAULT)

@@ -131,8 +131,8 @@ def apply(changes, reverse=False):
 def compiled(policy, sites, pattern, parameter_pattern):
     settings = policy['enumeration']
     if not settings['enabled']:
-        return ['map $server_name $hdn_enum_match { default 0; }']
-    lines = ['map $server_name $hdn_enum_site {', '    default 0;']
+        return ['map $hdn_site $hdn_enum_match { default 0; }']
+    lines = ['map $hdn_site $hdn_enum_site {', '    default 0;']
     lines += ['    ' + site['domain'] + ' 1;' for site in sites
               if selected(policy, site) and site.get('enumeration_ready')]
     lines += ['}', 'map $uri $hdn_enum_rest_path {', '    default 0;']

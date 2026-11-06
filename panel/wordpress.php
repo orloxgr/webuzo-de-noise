@@ -1,4 +1,6 @@
 <?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+
 $wpStatus = $data['wordpress'] ?? [];
 $wpSettings = $wpStatus['settings'] ?? ['enabled' => false, 'maxretry' => 3, 'findtime' => 300, 'durations' => [300, 259200, -1]];
 $wpTimes = $wpSettings['durations'];

@@ -9,7 +9,7 @@ FILES = (Path(__file__).with_name('php-probes.txt')).read_text(encoding='utf-8')
 
 
 def event_format(name, reason, event_token):
-    payload = dict(v=1, ts='$msec', ip='$remote_addr', domain='$server_name',
+    payload = dict(v=1, ts='$msec', ip='$remote_addr', domain='$hdn_site',
                    reason=reason, token=event_token, path='$hdn_request_path', method='$request_method')
     return "log_format " + name + " escape=json '" + json.dumps(payload, separators=(',', ':')) + "';"
 
@@ -127,14 +127,14 @@ def reason_settings(settings):
 
 
 def compile_maps(policy, sites, pattern, exact):
-    lines = ['map $server_name $hdn_probe_web_site {', '    default 0;']
+    lines = ['map $hdn_site $hdn_probe_web_site {', '    default 0;']
     lines += ['    ' + site.get('domain', site['key'].split('/', 1)[1]) + ' 1;'
               for site in sites if site.get('supported', True) and not site.get('suspended')]
     lines += ['}']
     settings = policy['bans']
     preferences = policy['domain_bans']['sites']
     for kind, key in [('file', 'missing_files'), ('query', 'suspicious_queries')]:
-        lines += ['map $server_name $hdn_local_' + kind + '_site {', '    default 0;']
+        lines += ['map $hdn_site $hdn_local_' + kind + '_site {', '    default 0;']
         lines += ['    ' + site.get('domain', site['key'].split('/', 1)[1]) + ' 1;'
                   for site in sites if site.get('supported', True) and not site.get('suspended')
                   and preferences.get(site['key'], {}).get(key)]
@@ -144,7 +144,7 @@ def compile_maps(policy, sites, pattern, exact):
             lines += ['    ~^1:[01]:1$ 1;']
         lines += ['}']
     for kind in ('files', 'queries'):
-        lines += ['map "$server_name:$uri" $hdn_probe_' + kind + '_exempt {', '    default 0;']
+        lines += ['map "$hdn_site:$uri" $hdn_probe_' + kind + '_exempt {', '    default 0;']
         for site in sites:
             if site.get('supported', True) and not site.get('suspended'):
                 host = site.get('domain', site['key'].split('/', 1)[1])
@@ -194,9 +194,9 @@ def compile_maps(policy, sites, pattern, exact):
               '    default 0;', '    ~^enforce:domain-(file|query):404$ 1;', '}',
               'map $hdn_domain_reason $hdn_domain_token { default -; domain-file $hdn_probe_file; domain-query $hdn_probe_query; }',
               event_format('hdn_domain_bans', '$hdn_domain_reason', '$hdn_domain_token')]
-    # Local Nginx 404s using server logging have no origin access-log record.
-    # Origin 404s and native static locations with their own logging are read
-    # from the shared native domain log instead, once per request.
+    # Fallback for configurations without complete native server-level logging.
+    # Standard Webuzo virtual hosts already log these local 404s, so their site
+    # snippets omit this extra event to retain one strike per actual request.
     lines += ['map "$hdn_mode:$status:$upstream_status" $hdn_early_404_log {',
               '    default 0;', '    ~^enforce:404:(-|)$ 1;', '}',
               event_format('hdn_early_404', 'not-found', '-')]

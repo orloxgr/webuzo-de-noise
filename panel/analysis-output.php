@@ -1,4 +1,6 @@
-<?php $analysis = $data['analysis'] ?? null; ?>
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+ $analysis = $data['analysis'] ?? null; ?>
 <div id="hdn-analysis-output">
 <?php if (is_array($analysis)): ?>
 <div class="u-mt20">

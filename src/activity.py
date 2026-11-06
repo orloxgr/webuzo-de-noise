@@ -60,6 +60,11 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                 if len(fields) == 4:  # Older endpoint-only rate-limit record.
                     timestamp, domain, limit, status = fields
                     rule, mode = 'endpoint-limit', 'unknown'
+                elif len(fields) == 5 and fields[3].isdigit() and fields[4] in ('off', 'observe', 'enforce'):
+                    # Nginx renders an initialized but empty limit status as
+                    # an empty field, not "-". Older match logs contain it.
+                    timestamp, domain, rule, status, mode = fields
+                    limit = ''
                 elif len(fields) in (5, 6):
                     timestamp, domain, rule, limit, status = fields[:5]
                     mode = fields[5] if len(fields) == 6 else 'unknown'
@@ -73,7 +78,7 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                     continue
                 outcome = 'matched'
                 if limit == 'REJECTED' or (mode == 'enforce' and (
-                        status == '403' and (rule in ('agent', 'private-file', 'domain-ban', 'user-enumeration') or rule.startswith('filter-block-'))
+                        status == '403' and (rule in ('agent', 'private-file', 'global-ban', 'domain-ban', 'user-enumeration') or rule.startswith('filter-block-'))
                         or status == '404' and (rule.startswith('static-') or rule in ('missing-file', 'suspicious-query')))):
                     outcome = 'blocked'
                 elif mode == 'observe' or limit.endswith('_DRY_RUN'):

@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import sys
+import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -53,3 +54,60 @@ class NativeDiscovery(unittest.TestCase):
         with patch.object(webuzo, 'native_read', return_value=text.encode()):
             self.assertTrue(webuzo.servers()[0]['limits'])
         self.assertFalse(webuzo.has_limits(webuzo.directives('add_header X-Text "limit_req zone=literal;";')))
+
+    def test_native_aliases_with_separate_virtual_hosts_share_one_policy_identity(self):
+        rows = {'2': dict(user='alice', domain='alias.test', path='/home/alice/public_html', type='alias', alias='one.test'),
+                '1': dict(user='alice', domain='one.test', path='/home/alice/public_html', type='primary')}
+        servers = [dict(names=[host, 'www.' + host], roots=[['/home/alice/public_html']],
+                        includes=[str(webuzo.CUSTOM / (host + '.conf'))], limits=False, cache=True)
+                   for host in ('alias.test', 'one.test')]
+        with patch.object(webuzo, 'users', return_value={'alice': dict(homedir='/home/alice', suspended=False)}), \
+                patch.object(webuzo, 'native_list', return_value=rows), \
+                patch.object(webuzo, 'servers', return_value=servers):
+            sites = webuzo.collect()
+        self.assertEqual(len(sites), 1)
+        self.assertTrue(sites[0]['supported'])
+        self.assertEqual(sites[0]['key'], 'alice/one.test')
+        self.assertEqual(sites[0]['custom_domains'], ['alias.test', 'one.test'])
+        self.assertEqual(sites[0]['paths'], [str(webuzo.SNIPPETS / 'one.test.conf')])
+        self.assertIn('www.alias.test', sites[0]['aliases'])
+
+    def test_alias_metadata_cannot_point_into_another_account_or_form_a_cycle(self):
+        rows = {'1': dict(user='alice', domain='alias.test', path='/home/alice/public_html', type='alias', alias='other.test')}
+        with patch.object(webuzo, 'users', return_value={'alice': dict(homedir='/home/alice', suspended=False)}), \
+                patch.object(webuzo, 'native_list', return_value=rows), patch.object(webuzo, 'servers', return_value=[]):
+            with self.assertRaisesRegex(ValueError, 'does not belong'):
+                webuzo.collect()
+            rows['1']['alias'] = 'alias.test'
+            with self.assertRaisesRegex(ValueError, 'Recursive'):
+                webuzo.collect()
+
+    @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Root Nginx process fixtures')
+    def test_reload_waits_until_old_workers_stop_accepting_new_connections(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder); proc = root / 'proc'
+            binary = root / 'nginx'; binary.touch()
+            master = proc / '123'; (master / 'task/123').mkdir(parents=True)
+            (master / 'exe').symlink_to(binary)
+            children = master / 'task/123/children'; children.write_text('456')
+            for pid in ('456', '789'):
+                (proc / pid).mkdir()
+                (proc / pid / 'cmdline').write_bytes(b'nginx: worker process\0')
+            def path(value):
+                return proc if str(value) == '/proc' else Path(value)
+            def signal_master(pid, signal):
+                self.assertEqual(pid, 123)
+                children.write_text('456 789')
+            def graceful_transition(delay):
+                self.assertEqual(delay, .05)
+                (proc / '456/cmdline').write_bytes(b'nginx: worker process is shutting down\0')
+            def native_read(path):
+                return b'pid /run/native-test.pid;' if path == webuzo.CONFIG else b'123'
+            with patch.object(webuzo, 'Path', side_effect=path), \
+                    patch.object(webuzo, 'NGINX', binary), \
+                    patch.object(webuzo, 'native_read', side_effect=native_read), \
+                    patch.object(webuzo, 'run'), \
+                    patch.object(webuzo.os, 'kill', side_effect=signal_master), \
+                    patch.object(webuzo.time, 'sleep', side_effect=graceful_transition) as transition:
+                webuzo.reload_nginx()
+            transition.assert_called_once()

@@ -1,4 +1,6 @@
 <?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+
 $renderRule = static function (string $module, $index, array $rule) use ($escape, $data): void {
     $name = $module . '[' . $index . ']';
     $field = static fn($key) => $escape($name . '[' . $key . ']');

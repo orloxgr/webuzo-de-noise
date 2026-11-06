@@ -1,3 +1,6 @@
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+?>
 <h2 class="u-mb20">Spread WordPress cron jobs</h2>
 <p class="u-mb20">Spread existing WordPress jobs across the hour. The interval columns show how often each job runs; exact clock minutes are under Schedule details. Selected jobs remain editable in Webuzo CRON. No schedule changes until you apply it.</p>
 <form method="post" class="u-mb20"><?php $fields('cron_preview'); ?>

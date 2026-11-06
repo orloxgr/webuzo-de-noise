@@ -1,4 +1,6 @@
-<?php $banDetails = $row['diagnostics'] ?? null; ?>
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+ $banDetails = $row['diagnostics'] ?? null; ?>
 <details class="hdn-ban-details u-mt10">
 <summary title="Show the requests and policy captured when this ban was triggered.">Why was this IP banned?</summary>
 <?php if (!$banDetails): ?>

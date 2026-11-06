@@ -1,8 +1,8 @@
 """Incremental final-404 counters from native Webuzo Nginx access logs.
 
 Nginx serves static files and Apache serves origin responses into the same native
-combined log. Local Nginx rejections that inherit server logging have a separate
-metadata-only event, because they never reach either native logging location.
+combined log. Native server-level access logs also contain local Nginx rejections.
+Fallback metadata events are used only when that complete native log is absent.
 """
 import datetime
 import os
@@ -30,11 +30,22 @@ def countable(rule, path):
     return bool(path) and not (rule['exclude_static'] and ASSETS.search(path))
 
 
+def distinct_metadata(records, sites):
+    complete = {site['domain'] for site in sites if site.get('native_access_logging')}
+    for record in records:
+        # Older installed snippets may still have emitted an early-404 event.
+        # The native access record is authoritative for these virtual hosts.
+        if record[3] != 'not-found' or record[2] not in complete:
+            yield record
+
+
 def events(db, sites, namespace):
     if namespace not in ('native', 'domain'):
         raise ValueError('Invalid native access-log cursor namespace')
     db.execute('CREATE TABLE IF NOT EXISTS access_cursors (namespace TEXT, domain TEXT, device INTEGER, inode INTEGER, offset INTEGER, PRIMARY KEY(namespace,domain,device,inode))')
-    names = sorted({site['domain'] for site in sites})
+    canonical = {name: site['domain'] for site in sites
+                 for name in site.get('log_domains', [site['domain']])}
+    names = sorted(canonical)
     if not names:
         return
     row = db.execute('SELECT value FROM meta WHERE key=?', ('404-next:'+namespace,)).fetchone()
@@ -68,7 +79,7 @@ def events(db, sites, namespace):
                     ip, date, method, target = match.groups()
                     try:
                         stamp = datetime.datetime.strptime(date.decode('ascii'), '%d/%b/%Y:%H:%M:%S %z').timestamp()
-                        yield (str(stamp), ip.decode('ascii'), domain, 'not-found', '-',
+                        yield (str(stamp), ip.decode('ascii'), canonical[domain], 'not-found', '-',
                                ban_evidence.path_only(target.decode('utf-8', errors='replace')),
                                ban_evidence.method_only(method.decode('ascii')))
                     except (ValueError, UnicodeError):

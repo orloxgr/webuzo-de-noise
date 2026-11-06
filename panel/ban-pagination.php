@@ -1,4 +1,6 @@
 <?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+
 $pageInfo = $listState['pagination'] ?? ['page' => 1, 'pages' => 1, 'total' => 0, 'view' => 'active'];
 $historyView = $pageInfo['view'] === 'history';
 $listUrl = static function (array $changes) use ($listing, $listTab, $escape): string {

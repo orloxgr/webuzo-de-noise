@@ -1,4 +1,6 @@
 <?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+
 $tabs = $isAdmin ? ['general' => 'General', 'agents' => 'User-Agents', 'endpoints' => 'Endpoints',
     'filters' => 'Filtered URLs', 'static' => 'Static files', 'bans' => 'IP bans', 'domain-bans' => 'Domain bans',
     'enumeration' => 'User enumeration', 'wordpress' => 'WordPress logins', 'cron' => 'Cron', 'domains' => 'Domains', 'activity' => 'Activity'] : ['domain-bans' => 'Domain bans', 'domains' => 'Domains', 'activity' => 'Activity'];

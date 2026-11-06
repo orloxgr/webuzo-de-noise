@@ -1,3 +1,6 @@
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+?>
 <h2 class="u-mb20">Activity</h2>
 <p class="u-mb10">Review matched requests from all available retained logs. A review runs only when requested; opening this panel does not rescan logs.</p>
 <form method="post" id="hdn-activity-scan" data-hdn-context="<?= $escape(($actor ?? $headerOwner) . ":" . ($isAdmin ? "all" : $headerOwner)) ?>">

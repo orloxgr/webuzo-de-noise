@@ -1,4 +1,4 @@
-/* Addon-scoped layout; retain Hestia's native colors, controls and tabs. */
+/* Addon-scoped layout inside Webuzo's native panel. */
 .hdn-ban-pager{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .hdn-ban-pager [aria-current="page"]{font-weight:700;outline:1px solid currentColor}
 #hdn-container { min-width: 0; max-width: 100%; width: 100%; }

@@ -240,6 +240,15 @@ def findings(groups, persist=False):
     return sorted(result, key=lambda row: (order[row['kind']], -row['count'], row['site'], row['path']))
 
 
+def native_log_paths(site, root):
+    for name in site.get('log_domains', [site['domain']]):
+        valid_domain(name)
+        candidates = [root / (name + '.log')] + sorted(root.glob(name + '.log.[0-9]*'))
+        for path in candidates:
+            if re.fullmatch(re.escape(name) + r'[.]log(?:[.][0-9]+(?:[.](?:gz|bz2|xz))?)?', path.name):
+                yield path
+
+
 def scan(sites, target, minutes, state=None, verify_google=False, now=None, progress=None, cancelled=None, report_path=None):
     chosen = selection(sites, target, minutes)
     if type(verify_google) is not bool:
@@ -253,11 +262,7 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
     try:
         for site in chosen:
             for root in LOG_ROOTS:
-                candidates = [root / (site['domain'] + '.log')]
-                candidates += sorted(root.glob(site['domain'] + '.log.[0-9]*'))
-                for path in candidates:
-                    if not re.fullmatch(re.escape(site['domain']) + r'[.]log(?:[.][0-9]+(?:[.](?:gz|bz2|xz))?)?', path.name):
-                        continue
+                for path in native_log_paths(site, root):
                     try:
                         info = path.lstat()
                     except FileNotFoundError:

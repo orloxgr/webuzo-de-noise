@@ -1,4 +1,6 @@
 <?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+
 // Rendered only by the authenticated native Webuzo plugin action.
 $listing = [];
 foreach (['bans', 'domain'] as $scope) {
@@ -181,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ($request['action'] === 'cron_preview' ? 'Cron preview generated. No schedule has changed.' :
                 ($request['action'] === 'cron_apply' ? 'Selected cron schedules updated through Webuzo.' :
                 ($request['action'] === 'disable' ? 'De-Noise is off for every domain. Its web bans will be released by synchronization.' :
-                ($request['action'] === 'unban' ? 'Unban requested. Check the active and pending counts.' : 'Settings applied. Firewall changes synchronize within about one minute.'))));
+                ($request['action'] === 'unban' ? 'Unban requested. Check the active and pending counts.' : 'Settings applied. Automatic bans synchronize within about one minute.'))));
         }
     }
 } elseif ($_SERVER['REQUEST_METHOD'] !== 'GET') {

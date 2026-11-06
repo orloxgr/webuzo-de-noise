@@ -33,6 +33,7 @@ class BanPanelTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             source=Path(temp)/'activity.php'
             source.write_text('''<?php
+                define('SOFTACULOUS', true);
                 $data=[];$isAdmin=true;$headerOwner='admin';$install=$argv[1];$fields=static function($action){};
                 $escape=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
                 require $argv[1].'/panel/activity.php';
@@ -60,6 +61,7 @@ class BanPanelTests(unittest.TestCase):
             source=Path(temp)/'render.php';payload=Path(temp)/'data.json'
             payload.write_text(json.dumps(fixture))
             source.write_text('''<?php
+                define('SOFTACULOUS', true);
                 $fixture=json_decode(file_get_contents($argv[1]),true);
                 $install=$argv[2];$data=$fixture['data'];$policy=$data['policy'];$listing=$fixture['listing'];
                 $isAdmin=true;$read_only=false;$error='';$escape=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');

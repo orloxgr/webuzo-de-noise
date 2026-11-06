@@ -11,11 +11,22 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('php'), 'PHP CLI for report rendering')
 class ReviewPanelTests(unittest.TestCase):
+    def test_direct_template_access_stops_before_rendering_or_processing_requests(self):
+        program = 'register_shutdown_function(function(){echo http_response_code();});require $argv[1];'
+        files = list((ROOT / 'panel').glob('*.php')) + [ROOT / 'webuzo-de-noise.php']
+        for source in files:
+            with self.subTest(file=source.name):
+                result = subprocess.run(['php', '-r', program, str(source)], capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stderr, '')
+                self.assertEqual(result.stdout, '403')
+
     def render(self, template, analysis):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory)
             (path/'fixture.json').write_text(json.dumps(analysis))
             (path/'render.php').write_text('''<?php
+                define('SOFTACULOUS', true);
                 $data=['analysis'=>json_decode(file_get_contents($argv[1]),true)];
                 $escape=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
                 require $argv[2];

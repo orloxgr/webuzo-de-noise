@@ -149,7 +149,7 @@ def synchronize(policy, sites, state, native, now=None):
         valid = {'domain-file': {token('f', value) for value in settings['missing_files']['paths']},
                  'domain-query': {token('q', value) for value in settings['suspicious_queries']['targets']},
                  'domain-404': {'-'}}
-        sources = chain(auto_bans.events(db, 'domain_cursors'), not_found.events(db,
+        sources = chain(not_found.distinct_metadata(auto_bans.events(db, 'domain_cursors'), sites), not_found.events(db,
             [site for key, site in known.items() if preferences[key].get('any_404')], 'domain'))
         for stamp, address, host, reason, event_token, path, method in sources:
             if reason == 'not-found':

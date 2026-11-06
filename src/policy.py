@@ -322,7 +322,7 @@ def parameter_pattern(value):
 def scope_map(variable, rule, sites):
     names = sorted({s.get('domain', s['key'].split('/', 1)[1]) for s in sites
                     if applies(rule, s) and s.get('supported', True) and not s.get('suspended')})
-    return ['map $server_name $' + variable + ' {', '    default 0;'] + [
+    return ['map $hdn_site $' + variable + ' {', '    default 0;'] + [
         '    ' + domain(name) + ' 1;' for name in names] + ['}']
 
 
@@ -336,7 +336,7 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
     policy = validate(policy)
     # Declare a safe mode even on a new server with no domains yet. Supported
     # virtual hosts set this changeable variable during their rewrite phase.
-    lines = [MARKER]
+    lines = [MARKER, 'map $server_name $hdn_site { default $server_name; }']
     lines += ['geo $remote_addr $hdn_global_blocked {', '    default 0;']
     for value in sorted(global_blocks or []):
         address = ipaddress.ip_address(value)
@@ -354,9 +354,9 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
             lines += ['    ' + str(ip) + ('/32' if ip.version == 4 else '/128') + ' 1;']
         lines += ['}']
         block_variables.append((domain(known[key].get('domain', key.split('/', 1)[1])), name))
-    lines += ['map $server_name $hdn_domain_blocked {', '    default 0;']
+    lines += ['map $hdn_site $hdn_domain_blocked {', '    default 0;']
     lines += ['    ' + host + ' $' + name + ';' for host, name in block_variables]
-    lines += ['}', 'map $server_name $hdn_mode { default off; }',
+    lines += ['}', 'map $hdn_site $hdn_mode { default off; }',
              'map $http_user_agent $hdn_agent {', '    default 0;']
     entries = (policy['agents'] if policy['agents_enabled'] else []) + (policy['tool_agents'] if policy['tool_agents_enabled'] else [])
     lines += ['    ' + literal_regex(entry) + ' 1;' for entry in dict.fromkeys(entries)]
@@ -376,7 +376,7 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
     web_sites = [site for site in sites if site.get('kind') != 'mail']
     lines += enumeration.compiled(policy, web_sites, pattern, parameter_pattern)
     lines += probe_rules.compile_maps(policy, web_sites, pattern, exact_uri_pattern)
-    lines += ['map "$server_name:$uri" $hdn_static_exempt {', '    default 0;']
+    lines += ['map "$hdn_site:$uri" $hdn_static_exempt {', '    default 0;']
     for site in sites:
         if site.get('supported', True) and not site.get('suspended'):
             name = domain(site.get('domain', site['key'].split('/', 1)[1]))
@@ -394,7 +394,7 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
         lines += ['map $http_user_agent $' + tag + '_agent {', '    default "";']
         lines += ['    ' + literal_regex(agent) + ' a' + hashlib.sha256(agent.encode()).hexdigest()[:12] + ';' for agent in rule['agents']]
         lines += ['}', 'map "$hdn_mode:$' + tag + '_site:$' + tag + '_path:$' + tag + '_arg:$' + tag + '_agent" $' + tag + '_key {',
-                  '    default "";', '    ' + pattern('^(observe|enforce):1:1:1:a[0-9a-f]+$') + ' "$server_name:' + rule['id'] + ':$' + tag + '_agent";', '}']
+                  '    default "";', '    ' + pattern('^(observe|enforce):1:1:1:a[0-9a-f]+$') + ' "$hdn_site:' + rule['id'] + ':$' + tag + '_agent";', '}']
         if rule['action'] == 'limit':
             lines += ['limit_req_zone $' + tag + '_key zone=' + tag + ':10m rate=' + str(rule['rate']) + 'r/m;']
         block_variables.append((tag + '_key', 'filter-' + rule['action'] + '-' + rule['id']))
@@ -430,18 +430,19 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
               'map $hdn_match $hdn_block {', '    default 0;', '    private-file 1;',
               '    agent 1;', '    ~^filter-block- 1;', '}',
               'map "$hdn_mode:$hdn_static_candidate" $hdn_static_reject {', '    default 0;', '    ~^enforce:static- 1;', '}',
+              'map $limit_req_status $hdn_limit_status { default $limit_req_status; "" "-"; }',
               # The JSON-escaped User-Agent follows the legacy fields, separated
               # by a tab. Never record IPs, URLs, queries or other headers here.
-              'log_format hdn escape=json \'$time_iso8601 $server_name $hdn_match $limit_req_status $status $hdn_mode\\t"$http_user_agent"\';',
+              'log_format hdn escape=json \'$time_iso8601 $hdn_site $hdn_match $hdn_limit_status $status $hdn_mode\\t"$http_user_agent"\';',
               'map "$hdn_mode:$hdn_match:$limit_req_status" $hdn_log {',
               '    default 0;', '    ~^(observe|enforce):[^:]+: 1;',
               '    ~^(observe|enforce):.*:(REJECTED|REJECTED_DRY_RUN|DELAYED_DRY_RUN)$ 1;', '}',
               'map "$hdn_mode:$request_method:$uri" $hdn_login_key {', '    default "";']
     if policy['login']['enabled']:
-        lines.append('    ~^(observe|enforce):POST:/wp-login\\.php/?$ "$server_name:$binary_remote_addr";')
+        lines.append('    ~^(observe|enforce):POST:/wp-login\\.php/?$ "$hdn_site:$binary_remote_addr";')
     lines += ['}', 'map "$hdn_mode:$request_method:$uri" $hdn_xmlrpc_key {', '    default "";']
     if policy['xmlrpc']['enabled']:
-        lines.append('    ~^(observe|enforce):POST:/xmlrpc\\.php/?$ "$server_name:$binary_remote_addr";')
+        lines.append('    ~^(observe|enforce):POST:/xmlrpc\\.php/?$ "$hdn_site:$binary_remote_addr";')
     lines += ['}']
     for key in ('login', 'xmlrpc'):
         lines += ['map $hdn_' + key + '_key $hdn_' + key + '_label {',
@@ -453,7 +454,7 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
 
 def site_config(policy, site, document_root=None):
     mode = site_mode(policy, site)
-    lines = [MARKER, 'set $hdn_mode ' + mode + ';']
+    lines = [MARKER, 'set $hdn_site ' + domain(site.get('domain', site['key'].split('/', 1)[1])) + ';', 'set $hdn_mode ' + mode + ';']
     if policy['bans']['enabled'] or site.get('global_bans'):
         lines += ['if ($hdn_global_blocked) { return 403; }']
     if mode == 'enforce':
@@ -500,6 +501,6 @@ def site_config(policy, site, document_root=None):
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_bans if=$hdn_autoban_log;']
     if any(local.values()):
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_domain_bans if=$hdn_domain_autoban_log;']
-    if (policy['bans']['enabled'] and policy['bans']['any_404']['enabled']) or local.get('any_404'):
+    if not site.get('native_access_logging') and ((policy['bans']['enabled'] and policy['bans']['any_404']['enabled']) or local.get('any_404')):
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_early_404 if=$hdn_early_404_log;']
     return '\n'.join(lines) + '\n'

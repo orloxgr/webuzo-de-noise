@@ -167,8 +167,8 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
         with database(state, create=False) as db:
             if (db is not None and not get(db, 'chain_owned') and not db.execute(
                     "SELECT ip FROM bans WHERE status IN ('active','pending','removing') LIMIT 1").fetchone()):
-                # Domain-only bans share storage, not the firewall backend.
-                # Do not require iptables when no native work is owned/queued.
+                # Domain-only bans share storage, not the global web-ban backend.
+                # Do not require it when no global work is owned/queued.
                 for _ in events(db):
                     pass
                 skip_native = True
@@ -197,7 +197,7 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                     elif ipaddress.ip_address(row['ip']).version == 6 and row['ip'] in records and row['ip'] not in active:
                         db.execute("UPDATE bans SET status='pending',error='' WHERE ip=?", (row['ip'],))
                     elif row['ip'] not in records or row['ip'] not in active:
-                        raise ValueError('Native ban record and firewall disagree for ' + row['ip'])
+                        raise ValueError('Web-ban record and installed Nginx rules disagree for ' + row['ip'])
                 rules = reason_settings(settings)
                 for reason, rule in rules.items():
                     duration = rule['duration_days']
@@ -214,7 +214,7 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                     db.execute('DELETE FROM strikes WHERE domain NOT IN (' + ','.join('?' for _ in eligible) + ')', tuple(eligible))
                     valid_tokens = {'missing-file': {token('f', value) for value in settings['missing_files']['paths']},
                                     'suspicious-query': {token('q', value) for value in settings['suspicious_queries']['targets']}}
-                    sources = chain(events(db), not_found.events(db,
+                    sources = chain(not_found.distinct_metadata(events(db), sites), not_found.events(db,
                         [site for site in sites if site['domain'] in eligible and site.get('kind') != 'mail'], 'native')
                         if settings['any_404']['enabled'] else []) if read_events else []
                     for stamp, address, domain, reason, event_token, path, method in sources:

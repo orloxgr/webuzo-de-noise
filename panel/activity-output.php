@@ -1,3 +1,6 @@
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+?>
 <div id="hdn-activity-output">
 <?php $activity = $data['analysis'] ?? null; if (is_array($activity)): ?>
 <p class="u-mb10">Matched requests · last <?= $escape($activity['window_minutes']) ?> minutes · <?= $escape($activity['total']) ?> in available retained logs</p>

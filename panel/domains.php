@@ -1,3 +1,6 @@
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+?>
 <h2 class="u-mb20">Domains</h2>
 <?php if ($isAdmin): ?>
 <form method="post"><?php $fields('bulk'); ?>

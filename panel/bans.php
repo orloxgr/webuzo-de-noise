@@ -1,4 +1,6 @@
-<?php $ban = $policy['bans'] ?? []; $banState = $data['bans'] ?? []; ?>
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+ $ban = $policy['bans'] ?? []; $banState = $data['bans'] ?? []; ?>
 <h2 class="u-mb20">Automatic IP bans</h2>
 <label class="form-label u-block u-mb20"><input form="hdn-settings" type="checkbox" name="bans_enabled" <?= !empty($ban['enabled']) ? 'checked' : '' ?>> Enable automatic server-wide web bans</label>
 <p class="u-mb20">Selected probes are rejected immediately. Automatic IPv4 and IPv6 bans synchronize within about one minute and affect the websites managed by De-Noise. SSH, email and panel access remain available.</p>
@@ -80,7 +82,6 @@
 </form>
 <?php if (!empty($banState['error'])): ?><div class="alert alert-danger u-mb20" role="alert"><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $escape($banState['error']) ?></pre></div><?php endif; ?>
 <p class="u-mb10">Active: <?= $escape($banState['active'] ?? 0) ?> · Pending: <?= $escape($banState['pending'] ?? 0) ?> · Last sync: <?= !empty($banState['last_sync']) ? $escape(gmdate('Y-m-d H:i:s', (int)$banState['last_sync']) . ' UTC') : 'Not synchronized yet' ?></p>
-<?php if (!empty($banState['unsupported_ipv6'])): ?><p class="u-mb10">IPv6 probes without a native firewall ban: <?= $escape($banState['unsupported_ipv6']) ?></p><?php endif; ?>
 <?php $listState = $banState; $listPrefix = 'bans'; $listTab = 'bans'; require $install . '/panel/ban-pagination.php'; ?>
 <?php if (!$historyView): ?><form method="post"><?php $fields('unban'); ?>
 <div class="u-mb10"><button class="button button-secondary" type="submit">Unban selected</button>

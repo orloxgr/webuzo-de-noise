@@ -1,3 +1,6 @@
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+?>
 <h2 class="u-mb20">WordPress user enumeration</h2>
 <p class="u-mb20">Restrict public user discovery while keeping authenticated WordPress requests available. No account/domain request quota or automatic IP ban is added.</p>
 <?php foreach ([

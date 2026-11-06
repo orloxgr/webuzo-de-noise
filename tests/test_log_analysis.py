@@ -112,6 +112,16 @@ class ScanTests(unittest.TestCase):
         self.assertIn('valid pages', row['advice'])
         self.assertEqual(list(self.state.iterdir()), [])
 
+    def test_separate_native_alias_logs_are_counted_in_the_canonical_domain_scope(self):
+        self.sites = [{**self.sites[0], 'log_domains': ['one.test', 'alias.test']}, self.sites[1]]
+        self.record('/catalog/?season=first')
+        self.path = self.logs / 'alias.test.log'
+        self.record('/catalog/?season=second')
+        result = self.scan()
+        self.assertEqual(result['totals']['requests'], 2)
+        self.assertEqual({row['domain'] for row in result['coverage']}, {'one.test'})
+        self.assertEqual({row['file'] for row in result['coverage']}, {'one.test.log', 'alias.test.log'})
+
     def test_tracking_values_do_not_create_filter_diversity_or_expose_private_data(self):
         for i in range(35):self.record('/catalog/?season=summer&utm_source=private-'+str(i)+'&token=SECRET_VALUE', agent='MyPrivateAgentXYZ')
         result = self.scan()

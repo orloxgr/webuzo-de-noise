@@ -93,6 +93,24 @@ class NativeIncludeTests(unittest.TestCase):
             integration.prepare([self.site], {})
         self.assertNotIn(integration.BEGIN, self.path.read_text())
 
+    def test_alias_custom_include_can_be_retargeted_and_removed_without_losing_admin_content(self):
+        alias = self.custom / 'alias.test.conf'
+        original = 'add_header X-Administrator "kept";\n'; alias.write_text(original)
+        site = {**self.site, 'custom_domains': ['example.test', 'alias.test']}
+        manifest, changes = integration.prepare([site], {})
+        integration.write(changes)
+        self.assertIn('snippets/example.test.conf', alias.read_text())
+        self.assertEqual(manifest['alias.test']['site'], 'example.test')
+        retargeted = {'domain': 'other.test', 'supported': True, 'custom_domains': ['alias.test']}
+        manifest, changes = integration.prepare([retargeted], manifest)
+        integration.write(changes)
+        self.assertNotIn('snippets/example.test.conf', alias.read_text())
+        self.assertIn('snippets/other.test.conf', alias.read_text())
+        self.assertFalse(self.path.exists())
+        _, changes = integration.prepare([], manifest, remove=True)
+        integration.write(changes)
+        self.assertEqual(alias.read_text(), original)
+
     def test_symlinks_untrusted_owners_and_writable_parent_are_refused(self):
         target = self.root / 'target'; target.write_text('untouched')
         self.path.symlink_to(target)

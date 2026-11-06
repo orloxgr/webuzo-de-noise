@@ -365,6 +365,21 @@ class NativeNginxTests(unittest.TestCase):
         recorded = [json.loads(line.partition('\t')[2]) for line in rows if '\t' in line]
         self.assertIn(agent, recorded)
         self.assertNotIn('do-not-log-this', '\n'.join(rows))
+        for row in rows:
+            self.assertEqual(len(row.partition('\t')[0].split()), 6, row)
+
+    @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Root-owned native activity logs')
+    def test_activity_reader_counts_actual_nginx_blocks_without_a_limit_status(self):
+        import activity
+        from unittest.mock import patch
+        agent = 'Crawler Activity E2E'
+        self.assertEqual(self.request(agent=agent), 403)
+        with patch.object(activity, 'LOG', self.directory / 'matches.log'):
+            result = activity.summary({'enforce.test'})
+        records = [row for row in result['rows'] if row['agent'] == agent]
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]['count'], 1)
+        self.assertEqual(records[0]['outcome'], 'blocked')
 
 
 if __name__ == '__main__':

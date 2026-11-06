@@ -12,6 +12,20 @@ import activity
 
 @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Requires Linux root-owned log fixture')
 class ActivityTests(unittest.TestCase):
+    def test_native_empty_limit_fields_keep_rule_mode_agent_and_block_classification(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'matches.log'; stamp = '2026-01-01T00:00:00+00:00'
+            log.write_text(f'{stamp} own.test private-file  403 enforce\t"Private probe"\n'
+                           f'{stamp} own.test global-ban  403 enforce\t"Global ban"\n'
+                           f'{stamp} own.test agent  200 observe\t"Observed agent"\n'
+                           f'{stamp} other.test global-ban  403 enforce\t"Other account"\n')
+            with patch.object(activity, 'LOG', log):
+                result = activity.summary({'own.test'}, 1767225601)
+            self.assertEqual(result['total'], 3)
+            self.assertEqual(sum(row['count'] for row in result['rows'] if row['outcome'] == 'blocked'), 2)
+            self.assertEqual(sum(row['count'] for row in result['rows'] if row['outcome'] == 'observed'), 1)
+            self.assertNotIn('Other account', json.dumps(result))
+
     def test_json_escaped_full_agents_preserve_scope_and_old_record_compatibility(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / 'matches.log'; stamp = '2026-01-01T00:00:00+00:00'

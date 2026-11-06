@@ -18,8 +18,8 @@ def custom_path(value):
     return path
 
 
-def block(name):
-    return BEGIN + 'include ' + str(webuzo.SNIPPETS / (domain(name) + '.conf')) + ';\n' + END
+def block(name, target=None):
+    return BEGIN + 'include ' + str(webuzo.SNIPPETS / (domain(target or name) + '.conf')) + ';\n' + END
 
 
 def independent_limits(text, ancestors=frozenset()):
@@ -53,7 +53,8 @@ def independent_limits(text, ancestors=frozenset()):
 
 
 def prepare(sites, manifest, remove=False):
-    desired = {site['domain']: site for site in sites if site['supported']} if not remove else {}
+    desired = {name: site for site in sites if site['supported']
+               for name in site.get('custom_domains', [site['domain']])} if not remove else {}
     changes, next_manifest = [], {}
     for name in sorted(set(manifest) | set(desired)):
         domain(name)
@@ -61,7 +62,7 @@ def prepare(sites, manifest, remove=False):
         raw = storage.read(path)
         previous = None if raw is None else raw.decode('utf-8')
         text = previous or ''
-        owned = block(name)
+        owned = block(name, manifest.get(name, {}).get('site', name))
         if BEGIN in text or END in text:
             if text.count(owned) != 1 or text.count(BEGIN) != 1 or text.count(END) != 1:
                 raise ValueError('The De-Noise custom include was changed: ' + str(path))
@@ -71,17 +72,19 @@ def prepare(sites, manifest, remove=False):
             raise ValueError('A registered De-Noise custom include is missing: ' + str(path))
         clean = text.replace(owned, '')
         if name in desired:
+            target = domain(desired[name]['domain'])
+            next_block = block(name, target)
             # Existing administrator directives continue to be interpreted by
             # Nginx. Never silently override an independent rate-limit policy.
             if independent_limits(clean, frozenset({path})):
                 raise ValueError('Custom domain configuration already defines request limits: ' + name)
             if name in manifest:
-                after = text
-                entry = manifest[name]
+                after = text.replace(owned, next_block)
+                entry = {**manifest[name], 'site': target}
             else:
                 separator = '' if not text or text.endswith('\n') else '\n'
-                after = text + separator + owned
-                entry = {'created': previous is None, 'separator': separator}
+                after = text + separator + next_block
+                entry = {'created': previous is None, 'separator': separator, 'site': target}
             next_manifest[name] = entry
         else:
             entry = manifest[name]

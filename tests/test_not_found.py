@@ -98,6 +98,40 @@ class General404Tests(unittest.TestCase):
             for _ in range(5): out.write('{"v":1,"ts":"1000","ip":"198.51.100.7","domain":"one.test","reason":"not-found","token":"-","path":"/missing","method":"GET"}\n')
         self.assertEqual(self.sync()['active'], 1)
 
+    def test_separate_native_alias_logs_share_the_primary_domain_counter(self):
+        self.sites[0]['log_domains'] = ['one.test', 'alias.test']
+        for _ in range(5): self.event()
+        for _ in range(5): self.event(host='alias.test')
+        result = self.sync()
+        self.assertEqual(result['active'], 1)
+        self.assertEqual(result['rows'][0]['domain'], 'one.test')
+
+    def test_complete_native_logging_never_double_counts_legacy_early_404_metadata(self):
+        self.sites[0]['native_access_logging'] = True
+        self.policy['bans']['any_404']['maxretry'] = 2
+        self.event(request='GET /missing-one HTTP/1.1')
+        with self.log.open('a') as out:
+            out.write(json.dumps(dict(v=1, ts='1000', ip='198.51.100.7', domain='one.test', reason='not-found', token='-', path='/missing-one', method='GET')) + '\n')
+        self.assertEqual(self.sync()['active'], 0)
+        self.event(stamp=1002, request='GET /missing-two HTTP/1.1')
+        result = self.sync(1003)
+        self.assertEqual(result['active'], 1)
+        self.assertEqual(result['rows'][0]['diagnostics']['count'], 2)
+
+    def test_complete_native_logging_does_not_double_count_owner_scoped_404s(self):
+        self.sites[0]['native_access_logging'] = True
+        self.policy['bans']['enabled'] = False
+        self.policy['bans']['any_404']['maxretry'] = 2
+        self.policy['domain_bans']['sites'] = {'alice/one.test': dict(missing_files=False, suspicious_queries=False, any_404=True)}
+        self.event(request='GET /missing-one HTTP/1.1')
+        with self.log.open('a') as out:
+            out.write(json.dumps(dict(v=1, ts='1000', ip='198.51.100.7', domain='one.test', reason='not-found', token='-', path='/missing-one', method='GET')) + '\n')
+        domain_bans.synchronize(self.policy, self.sites, self.root, self.native, 1001)
+        self.assertEqual(domain_bans.desired(self.policy, self.sites, self.root, 1001), {})
+        self.event(stamp=1002, request='GET /missing-two HTTP/1.1')
+        domain_bans.synchronize(self.policy, self.sites, self.root, self.native, 1003)
+        self.assertIn('alice/one.test', domain_bans.desired(self.policy, self.sites, self.root, 1003))
+
     def test_owner_scope_accepts_ipv6_and_cannot_block_another_domain(self):
         self.policy['bans']['enabled'] = False
         self.policy['domain_bans']['sites'] = {'alice/one.test':dict(missing_files=False,suspicious_queries=False,any_404=True)}

@@ -1,4 +1,6 @@
-<?php $analysis = $data['analysis'] ?? null; ?>
+<?php
+if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
+ $analysis = $data['analysis'] ?? null; ?>
 <section class="hdn-analysis u-mb20" aria-label="Log analysis">
 <h3 class="u-mb10">Analyze logs for suggestions</h3>
 <p class="u-mb10">Review actual URL patterns before choosing a rule. High traffic, a crawler name or repeated 404s do not establish abuse. This review never applies rules, returns new 404s or bans visitors.</p>
