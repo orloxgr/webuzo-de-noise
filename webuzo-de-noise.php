@@ -35,14 +35,12 @@ function wdn_deactivate() {
 
 add_filter('admin_menu', 'wdn_admin_menu', 10, 1);
 function wdn_admin_menu($menu) {
-    global $globals;
-    $menu['webuzo-de-noise'] = ['name'=>'De-Noise', 'href'=>$globals['ind'].'act=webuzo-de-noise', 'icon'=>'fas fa-shield-alt'];
+    $menu['webuzo-de-noise'] = ['name'=>'De-Noise', 'href'=>'index.php?act=webuzo-de-noise', 'icon'=>'fas fa-shield-alt'];
     return $menu;
 }
 add_filter('enduser_cats_icons', 'wdn_user_menu', 10, 1);
 function wdn_user_menu($menu) {
-    global $globals;
-    $menu['security']['icons']['webuzo-de-noise'] = ['name'=>'De-Noise', 'href'=>$globals['ind'].'act=webuzo-de-noise', 'icon'=>'fas fa-shield-alt'];
+    $menu['security']['icons']['webuzo-de-noise'] = ['name'=>'De-Noise', 'href'=>'index.php?act=webuzo-de-noise', 'icon'=>'fas fa-shield-alt'];
     return $menu;
 }
 admin_act('webuzo-de-noise', 'wdn_page');

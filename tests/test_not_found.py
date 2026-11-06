@@ -204,7 +204,8 @@ class General404Tests(unittest.TestCase):
         text+=site_config(self.policy,site,str(self.root)).replace('/var/log/webuzo-de-noise/',str(self.root)+'/')
         text+='location = /hidden { return 404; }\nlocation /native-missing/ { root '+str(self.root)+'; try_files $uri =404; access_log '+str(native)+' combined; }\n'
         text+='location / { proxy_pass http://127.0.0.1:'+str(origin.server_address[1])+'; } } }'
-        config=self.root/'nginx.conf';config.write_text(text)
+        from native_nginx import isolated_config
+        config=self.root/'nginx.conf';config.write_text(isolated_config(text, self.root))
         subprocess.run([os.environ['HDN_TEST_NGINX'],'-c',str(config),'-p',str(self.root)],check=True,capture_output=True)
         try:
             for path in ['/origin-404','/native-missing/a.css?key=private','/hidden?password=private','/wp-content/missing.js?token=private','/opsh.php','/ok']:

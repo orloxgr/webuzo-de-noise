@@ -8,6 +8,8 @@ import sys
 import pwd
 import shlex
 
+sys.dont_write_bytecode = True
+sys.pycache_prefix = str(Path(__file__).resolve().parent / '.bytecode')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine
 import storage

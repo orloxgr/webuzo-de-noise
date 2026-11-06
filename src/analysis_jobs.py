@@ -11,6 +11,8 @@ import sqlite3
 import sys
 import time
 
+sys.dont_write_bytecode = True
+sys.pycache_prefix = str(Path(__file__).resolve().parent / '.bytecode')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import log_analysis
 import storage

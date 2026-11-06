@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from native_nginx import isolated_config
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
@@ -18,11 +19,25 @@ import webmail
 import webuzo
 import integration
 import activity
+import engine
 import storage
 from policy import DEFAULT
 
 
 class DiscoveryTests(unittest.TestCase):
+    def test_global_ban_and_unban_preserve_the_shared_mail_service_inventory(self):
+        native = engine.web_bans.Native(webuzo.HOME, webuzo.run, webuzo.STATE)
+        sites = [dict(key=webmail.KEY, domain=webmail.DOMAIN, shared_webmail=True)]
+        for adding in (True, False):
+            before = set() if adding else {'198.51.100.247'}
+            with patch.object(native, 'inspect', return_value=(True, before, before)), \
+                    patch.object(engine, 'collect', return_value=sites), \
+                    patch.object(webuzo, 'collect', side_effect=AssertionError('Incomplete website-only inventory')), \
+                    patch.object(engine, 'load', return_value=DEFAULT), patch.object(engine, 'apply') as apply:
+                native.change('198.51.100.247', adding)
+            self.assertIs(apply.call_args.args[1], sites)
+            self.assertEqual(apply.call_args.kwargs['global_blocks'], {'198.51.100.247'} if adding else set())
+
     def test_vendor_configuration_links_are_read_by_the_native_binary(self):
         dump = '# configuration file ' + str(webmail.CONFIG) + ':\nuser root; pid /run/native-panel.pid; events {} http {}\n'
         with patch.object(webuzo, 'run', return_value=dump) as command, \
@@ -133,7 +148,7 @@ class ServerScopeTests(unittest.TestCase):
                 return ('daemon off; pid ' + str(root / 'pid') + '; error_log ' + str(root / 'error') + '; '
                         'events {} http { server { listen 127.0.0.1:' + str(port) + '; ' +
                         webmail.compile(value) + ' location / { return 200 "native route"; } } }')
-            config.write_text(text(profile))
+            config.write_text(isolated_config(text(profile), root))
             binary = os.environ['HDN_TEST_NGINX']
             child = subprocess.Popen([binary, '-c', str(config), '-p', folder], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             try:

@@ -77,7 +77,7 @@ class Native:
             raise ValueError('Native web-ban state does not match the installed configuration')
         desired = saved | {address} if adding else saved - {address}
         policy = engine.validate(engine.load('policy.json', engine.DEFAULT))
-        engine.apply(policy, webuzo.collect(), global_blocks=desired)
+        engine.apply(policy, engine.collect(), global_blocks=desired)
 
     def add(self, address):
         self.change(address, True)

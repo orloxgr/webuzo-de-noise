@@ -118,3 +118,34 @@ test('activity loads metadata without scanning and uses its own start/status end
     assert.equal(f.requests[0].options.body.fields.get('tab'),'activity');
     assert.equal(f.updated(),true);
 });
+
+test('tabs switch panels and keyboard focus without depending on the panel theme', () => {
+    const panels = {}, inputs = [{value:'general'}], save = {hidden:false};
+    const tabs = ['general','filters','cron'].map(name => {
+        const handlers = {}, attributes = {'aria-controls':'panel-'+name};
+        panels['panel-'+name] = {hidden:name !== 'general'};
+        return {dataset:{hdnTab:name}, parentElement:{}, tabIndex:name === 'general' ? 0 : -1,
+            setAttribute:(key,value)=>{attributes[key]=value;}, getAttribute:key=>attributes[key],
+            addEventListener:(event,fn)=>{handlers[event]=fn;}, click:()=>handlers.click(),
+            focus(){this.focused=true;}, key:key=>handlers.keydown({key,preventDefault(){}}), attributes};
+    });
+    const nodes = {...panels, 'hdn-save':save,
+        'hdn-agent-presets':{textContent:'{}'}, 'hdn-probe-presets':{textContent:'{}'}};
+    vm.runInNewContext(source, {
+        document:{getElementById:id=>nodes[id], addEventListener(){},
+            querySelectorAll:selector=>selector === '[data-hdn-tab]' ? tabs : selector === 'input[name="tab"]' ? inputs : []},
+        getComputedStyle:()=>({gridTemplateColumns:'100px 100px'})
+    });
+    tabs[1].click();
+    assert.equal(panels['panel-filters'].hidden,false);
+    assert.equal(panels['panel-general'].hidden,true);
+    assert.equal(tabs[1].attributes['aria-selected'],'true');
+    assert.equal(tabs[0].tabIndex,-1); assert.equal(tabs[1].tabIndex,0);
+    assert.equal(inputs[0].value,'filters'); assert.equal(save.hidden,false);
+    tabs[1].key('End');
+    assert.equal(panels['panel-cron'].hidden,false); assert.equal(save.hidden,true);
+    assert.equal(tabs[2].focused,true); assert.equal(inputs[0].value,'cron');
+    tabs[2].key('ArrowDown');
+    assert.equal(panels['panel-filters'].hidden,false); assert.equal(save.hidden,false);
+    assert.equal(tabs[1].focused,true);
+});

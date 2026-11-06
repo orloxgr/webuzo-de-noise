@@ -102,7 +102,8 @@ class WordPressIntegrationTests(unittest.TestCase):
             text+='server{listen 127.0.0.1:'+str(cls.front)+';server_name enum.example.test;\n'
             text+=site_config(policy,cls.site,str(cls.root)).replace('/var/log/webuzo-de-noise/matches.log',str(cls.root/'matches.log'))
             text+='location /{proxy_set_header Host $http_host;proxy_pass http://127.0.0.1:'+str(cls.backend)+';}\n}\n}'
-            (cls.root/'nginx.conf').write_text(text)
+            from native_nginx import isolated_config
+            (cls.root/'nginx.conf').write_text(isolated_config(text, cls.root))
             cls.nginx=[NGINX,'-p',str(cls.root)+'/', '-c','nginx.conf']
             result=subprocess.run([*cls.nginx,'-t'],capture_output=True,text=True)
             if result.returncode:raise AssertionError(result.stderr)

@@ -8,8 +8,8 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 ?>
 <script>document.title = 'De-Noise';</script>
 <style><?php readfile($install . '/panel/ui.css'); ?></style>
-<div class="toolbar"><div class="toolbar-inner"><div class="toolbar-buttons">
-    <a class="button button-secondary" href="<?= $escape($globals['ind']) ?>"><i class="fas fa-arrow-left icon-blue"></i>Back</a>
+<div class="toolbar" id="hdn-toolbar"><div class="toolbar-inner"><div class="toolbar-buttons">
+    <a class="button button-secondary" href="index.php"><i class="fas fa-arrow-left icon-blue"></i>Back</a>
     <?php if ($isAdmin): ?>
     <form method="post"><?php $fields('sync'); ?><button class="button button-secondary" type="submit">Synchronize now</button></form>
     <form method="post"><?php $fields('disable'); ?><button class="button button-secondary" type="submit">Disable everywhere</button></form>
@@ -24,7 +24,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <div class="alert alert-danger u-mb20" role="alert"><p>Automatic maintenance needs attention.<?= !empty($data['maintenance']['stale']) ? ' No successful run in the last 3 minutes.' : '' ?></p><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $escape($data['maintenance']['error'] ?? '') ?></pre></div>
 <?php endif; ?>
 <?php if ($isAdmin): ?><form method="post" id="hdn-settings"><?php $fields('save'); ?></form><?php endif; ?>
-<div class="tabs js-tabs<?= $isAdmin ? ' hdn-admin-tabs' : '' ?>" id="hdn-tabs">
+<div class="tabs<?= $isAdmin ? ' hdn-admin-tabs' : '' ?>" id="hdn-tabs">
 <div class="tabs-items" role="tablist" aria-label="De-Noise sections" style="--hdn-tab-columns:<?= (int)ceil(count($tabs) / 2) ?>">
 <?php foreach ($tabs as $key => $label): ?>
 <button type="button" class="tabs-item" id="hdn-tab-<?= $key ?>" data-hdn-tab="<?= $key ?>" role="tab" tabindex="<?= $key === $activeTab ? '0' : '-1' ?>" aria-selected="<?= $key === $activeTab ? 'true' : 'false' ?>" aria-controls="hdn-panel-<?= $key ?>"><?= $escape($label) ?></button>

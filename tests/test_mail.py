@@ -76,7 +76,8 @@ class MailRequestsTests(unittest.TestCase):
                 text+='server { listen 127.0.0.1:'+str(port)+'; server_name '+site['domain']+' mail.'+site['domain'].removeprefix('webmail.')+';\n'
                 text+=site_config(policy,site).replace('/var/log/webuzo-de-noise/',str(root)+'/')
                 text+='location / { return 200 "roundcube"; } }\n'
-            conf.write_text(text+'}')
+            from native_nginx import isolated_config
+            conf.write_text(isolated_config(text+'}', root))
             child=subprocess.Popen([os.environ['HDN_TEST_NGINX'],'-c',str(conf),'-p',str(root)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             try:
                 deadline=time.monotonic()+5

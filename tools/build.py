@@ -1,6 +1,8 @@
 """Build the native Webuzo plugin ZIP from the distributable source only."""
 import hashlib
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 import zipfile
 
@@ -16,11 +18,15 @@ def build():
     for folder in ('src', 'panel', 'wordpress', 'config'):
         paths += [path for path in (ROOT / folder).rglob('*') if path.is_file() and
                   '__pycache__' not in path.parts and path.suffix != '.pyc' and path.name != 'menu.js']
+    # Use a revision/source epoch rather than one permanent timestamp for every
+    # release. Native Python/PHP caches must see a new source modification time.
+    epoch = int(os.environ.get('SOURCE_DATE_EPOCH', max(path.stat().st_mtime for path in paths)))
+    date = datetime.fromtimestamp(epoch, timezone.utc).timetuple()[:6]
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted(paths):
             if path.is_symlink():
                 raise ValueError('Source symlinks are not distributable')
-            info = zipfile.ZipInfo('webuzo-de-noise/' + path.relative_to(ROOT).as_posix(), (2026, 1, 1, 0, 0, 0))
+            info = zipfile.ZipInfo('webuzo-de-noise/' + path.relative_to(ROOT).as_posix(), date)
             info.external_attr = 0o100644 << 16
             info.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(info, path.read_bytes())

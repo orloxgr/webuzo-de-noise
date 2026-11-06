@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import unittest
+from native_nginx import isolated_config
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from policy import DEFAULT, global_config, site_config
@@ -86,7 +87,7 @@ class NativeNginxTests(unittest.TestCase):
                                                      (cls.directory / 'matches.log').as_posix()).replace('/var/log/webuzo-de-noise/ban-events.log', (cls.directory / 'ban-events.log').as_posix())
             text += 'location / { proxy_pass http://127.0.0.1:' + str(cls.origin_port) + '; }\n}\n'
         text += '}\n'
-        (cls.directory / 'nginx.conf').write_text(text)
+        (cls.directory / 'nginx.conf').write_text(isolated_config(text, cls.directory))
         cls.command = [NGINX, '-p', cls.directory.as_posix() + '/', '-c', 'nginx.conf']
         result = subprocess.run([*cls.command, '-t'], capture_output=True, text=True)
         if result.returncode:
@@ -199,7 +200,7 @@ class NativeNginxTests(unittest.TestCase):
     def test_configuration_is_valid_before_any_domains_exist(self):
         text = 'pid logs/empty.pid;\nerror_log logs/empty.log;\nevents {}\nhttp {\n'
         text += global_config(DEFAULT, []) + '\n}\n'
-        (self.directory / 'empty.conf').write_text(text)
+        (self.directory / 'empty.conf').write_text(isolated_config(text, self.directory))
         command = [NGINX, '-p', self.directory.as_posix() + '/', '-c', 'empty.conf', '-t']
         result = subprocess.run(command, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -211,7 +212,7 @@ class NativeNginxTests(unittest.TestCase):
         policy['bans']['suspicious_queries']['parameters'] = ['parameter_' + str(n) + '_' + 'x'*45 for n in range(50)]
         text = 'pid logs/long-query.pid;\nerror_log logs/long-query.log;\nevents {}\nhttp {\n'
         text += global_config(policy, []) + '\n}\n'
-        (self.directory / 'long-query.conf').write_text(text)
+        (self.directory / 'long-query.conf').write_text(isolated_config(text, self.directory))
         result = subprocess.run([NGINX, '-p', self.directory.as_posix()+'/', '-c', 'long-query.conf', '-t'], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
@@ -228,7 +229,7 @@ class NativeNginxTests(unittest.TestCase):
             text += 'server { listen 127.0.0.1:' + str(port) + '; listen [::1]:' + str(port) + '; server_name '+host+' www.'+host+';\n'
             text += site_config(policy, site, str(self.directory)).replace('/var/log/webuzo-de-noise/matches.log', str(self.directory/'domain-matches.log')).replace('/var/log/webuzo-de-noise/ban-events.log', str(self.directory/'domain-events.log'))
             text += 'location / { proxy_pass http://127.0.0.1:'+str(self.origin_port)+'; }\n}\n'
-        text += '}\n'; (self.directory/'domain.conf').write_text(text)
+        text += '}\n'; (self.directory/'domain.conf').write_text(isolated_config(text, self.directory))
         command = [NGINX, '-p', str(self.directory)+'/', '-c', 'domain.conf']
         result = subprocess.run(command, capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -252,6 +253,34 @@ class NativeNginxTests(unittest.TestCase):
         finally:
             subprocess.run([*command,'-s','quit'],capture_output=True,timeout=5)
 
+    def test_global_ipv4_and_ipv6_bans_cover_both_accounts_and_aliases(self):
+        with socket.socket() as probe:
+            probe.bind(('127.0.0.1', 0)); port = probe.getsockname()[1]
+        policy = copy.deepcopy(DEFAULT); policy['mode'] = 'enforce'; policy['bans']['enabled'] = True
+        sites = [{'key': 'alice/global-one.test'}, {'key': 'bob/global-two.test'}]
+        text = 'pid logs/global.pid;\nerror_log logs/global-error.log;\nevents {}\nhttp {\n'
+        text += global_config(policy, sites, global_blocks={'127.0.0.9', '::1'})
+        for site in sites:
+            host = site['key'].split('/')[1]
+            text += 'server { listen 127.0.0.1:' + str(port) + '; listen [::1]:' + str(port) + '; server_name ' + host + ' www.' + host + ';\n'
+            text += site_config(policy, site, str(self.directory)).replace('/var/log/webuzo-de-noise/matches.log', str(self.directory/'global-matches.log')).replace('/var/log/webuzo-de-noise/ban-events.log', str(self.directory/'global-events.log'))
+            text += 'location / { proxy_pass http://127.0.0.1:' + str(self.origin_port) + '; }\n}\n'
+        (self.directory/'global.conf').write_text(isolated_config(text + '}\n', self.directory))
+        command = [NGINX, '-p', str(self.directory)+'/', '-c', 'global.conf']
+        result = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        def get(host, address='127.0.0.1', source=None):
+            connection = http.client.HTTPConnection(address, port, timeout=3, source_address=(source,0) if source else None)
+            connection.request('GET', '/', headers={'Host':host}); response = connection.getresponse()
+            status = response.status; response.read(); connection.close(); return status
+        try:
+            for host in ('global-one.test', 'www.global-one.test', 'global-two.test'):
+                self.assertEqual(get(host), 200)
+                self.assertEqual(get(host, source='127.0.0.9'), 403)
+                self.assertEqual(get(host, address='::1'), 403)
+        finally:
+            subprocess.run([*command,'-s','quit'],capture_output=True,timeout=5)
+
     def test_tool_and_crawler_switches_are_independent_in_real_nginx(self):
         for index, (tools, crawlers) in enumerate([(False, True), (True, False), (False, False)]):
             with socket.socket() as probe:
@@ -262,7 +291,7 @@ class NativeNginxTests(unittest.TestCase):
             text += 'server { listen 127.0.0.1:' + str(port) + '; server_name switches.test;\n'
             text += site_config(policy, {'key': 'alice/switches.test'}).replace('/var/log/webuzo-de-noise/matches.log', (self.directory / 'toggles-matches.log').as_posix())
             text += 'location / { proxy_pass http://127.0.0.1:' + str(self.origin_port) + '; }\n}\n}\n'
-            name = 'toggles-' + str(index) + '.conf'; (self.directory / name).write_text(text)
+            name = 'toggles-' + str(index) + '.conf'; (self.directory / name).write_text(isolated_config(text, self.directory))
             command = [NGINX, '-p', self.directory.as_posix() + '/', '-c', name]
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)

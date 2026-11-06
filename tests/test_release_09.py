@@ -123,10 +123,11 @@ class LogTrustTests(unittest.TestCase):
             with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
             conf=root/'nginx.conf'
             worker=next(uid for uid in storage.log_uids() if uid != 0)
-            conf.write_text('user '+pwd.getpwuid(worker).pw_name+'; daemon off; pid '+str(root/'pid')+'; error_log '+str(root/'error')+'; events {} http {\n'+
+            from native_nginx import isolated_config
+            conf.write_text(isolated_config('user '+pwd.getpwuid(worker).pw_name+'; daemon off; pid '+str(root/'pid')+'; error_log '+str(root/'error')+'; events {} http {\n'+
                 'log_format match "$time_iso8601 one.test private-file - $status enforce";\n'+
                 'log_format event "$msec 198.51.100.7 one.test private-file -";\n'+
-                'server { listen 127.0.0.1:'+str(port)+'; access_log '+str(match)+' match; access_log '+str(event)+' event; return 403; } }')
+                'server { listen 127.0.0.1:'+str(port)+'; access_log '+str(match)+' match; access_log '+str(event)+' event; return 403; } }', root))
             child=subprocess.Popen([os.environ['HDN_TEST_NGINX'],'-p',str(root),'-c',str(conf)],stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             try:
                 deadline=time.monotonic()+5

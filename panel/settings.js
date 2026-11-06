@@ -138,6 +138,12 @@
     const tabs = [...document.querySelectorAll('[data-hdn-tab]')];
     tabs.forEach(button => {
         button.addEventListener('click', () => {
+            tabs.forEach(tab => {
+                const selected = tab === button;
+                tab.setAttribute('aria-selected', String(selected));
+                tab.tabIndex = selected ? 0 : -1;
+                document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
+            });
             const save = document.getElementById('hdn-save');
             if (save) save.hidden = ['cron', 'domain-bans', 'wordpress'].includes(button.dataset.hdnTab);
             document.querySelectorAll('input[name="tab"]').forEach(input => { input.value = button.dataset.hdnTab; });
@@ -154,6 +160,7 @@
             const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 :
                 (tabs.indexOf(button) + step + tabs.length) % tabs.length;
             tabs[index].click();
+            tabs[index].focus();
         });
     });
     document.addEventListener('invalid', event => {
