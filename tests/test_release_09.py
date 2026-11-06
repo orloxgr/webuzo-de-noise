@@ -19,7 +19,7 @@ import auto_bans
 import domain_bans
 import engine
 import storage
-from policy import DEFAULT, validate, global_config, site_config
+from policy import V9_KEYS, DEFAULT, validate, global_config, site_config
 from probe_rules import FILES
 from test_auto_bans import FakeNative
 from test_installer import installer
@@ -28,7 +28,7 @@ import test_not_found
 
 class UpgradeTests(unittest.TestCase):
     def test_v7_keeps_custom_limits_lists_and_adds_guardrails_without_new_blocks(self):
-        old = copy.deepcopy(DEFAULT)
+        old = {key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS}
         old.update(schema=7)
         old.pop('enumeration')
         old.pop('mail_protection'); old.pop('log_rejections')
@@ -36,7 +36,7 @@ class UpgradeTests(unittest.TestCase):
         old['agents'] = ['CustomBot']
         old['bans']['missing_files']['paths'] = ['/custom.php']
         new = validate(old)
-        self.assertEqual(new['schema'], 9)
+        self.assertEqual(new['schema'], 10)
         self.assertEqual(new['agents'], ['CustomBot'])
         self.assertEqual(new['bans']['missing_files']['paths'], ['/custom.php'])
         self.assertEqual(new['bans']['any_404'], {**old['bans']['any_404'], 'exclude_static':True, 'min_distinct_paths':3})
@@ -49,7 +49,7 @@ class UpgradeTests(unittest.TestCase):
         saved.update(mail_protection=True, log_rejections=True)
         saved['bans']['any_404']['min_distinct_paths']=7
         saved['domain_bans']['sites']={'alice/one.test':dict(missing_files=True,suspicious_queries=False,any_404=False)}
-        old=copy.deepcopy(DEFAULT);old.update(schema=7)
+        old={key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS};old.update(schema=7)
         old.pop('enumeration')
         for key in ('mail_protection','log_rejections'):old.pop(key)
         for key in ('exclude_static','min_distinct_paths'):old['bans']['any_404'].pop(key)

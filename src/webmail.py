@@ -1,4 +1,5 @@
 """Shared Webuzo webmail through the documented EMPS server custom include."""
+import agent_catalog
 import fnmatch
 import json
 import math
@@ -119,8 +120,7 @@ def profile(policy):
     mode = policy['overrides'].get(KEY, policy['mode']) if policy['mail_protection'] else 'off'
     if mode == 'off':
         return dict(mode='off', agents=[], scanners=False)
-    agents = (policy['agents'] if policy['agents_enabled'] else []) + (
-        policy['tool_agents'] if policy['tool_agents_enabled'] else [])
+    agents = agent_catalog.enabled(policy)
     return dict(mode=mode, agents=list(dict.fromkeys(agents)), scanners=policy['scanners'])
 
 

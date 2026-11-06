@@ -47,16 +47,22 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <?php elseif ($key === 'agents'): ?>
     <h2 class="u-mb20">User-Agent lists</h2>
     <p class="u-mb20">One literal substring per line. Case-insensitive. Each list has its own switch.</p>
-    <?php foreach (['tool_agents' => ['Scanner tools', 'scanners', 'Add scanner tools'], 'agents' => ['Crawlers / other agents', 'crawlers', 'Add bulk / AI crawlers']] as $field => [$title, $preset, $button]): ?>
-    <h3 class="u-mb10"><?= $escape($title) ?></h3>
+    <div class="hdn-agent-grid">
+    <?php foreach ($data['presets']['agent_categories'] ?? [] as $field => $category): $isOther = $field === 'agents'; ?>
+    <<?= $isOther ? 'details' : 'section' ?> class="box-collapse hdn-agent-card<?= $isOther ? ' hdn-agent-other' : '' ?>">
+    <?php if ($isOther): ?><summary class="box-collapse-header"><?= $escape($category['title']) ?></summary><?php endif; ?>
+    <div class="box-collapse-content">
+    <?php if (!$isOther): ?><h3 class="u-mb10"><?= $escape($category['title']) ?></h3><?php endif; ?>
+    <p class="u-mb10"><?= $escape($category['description']) ?></p>
     <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="<?= $field ?>_enabled" <?= !array_key_exists($field . '_enabled', $policy) || $policy[$field . '_enabled'] ? 'checked' : '' ?>> Enable this list</label>
-    <label class="form-label" for="<?= $field ?>"><?= $escape($title) ?> blocklist</label>
-    <textarea form="hdn-settings" class="form-control u-mb10" rows="7" id="<?= $field ?>" name="<?= $field ?>" spellcheck="false"><?= $escape(implode("\n", $policy[$field] ?? [])) ?></textarea>
-    <button type="button" class="button button-secondary u-mb20" data-hdn-preset="<?= $preset ?>" data-hdn-agent-field="<?= $field ?>"><?= $escape($button) ?></button>
+    <label class="form-label" for="<?= $field ?>"><?= $escape($category['title']) ?> blocklist</label>
+    <textarea form="hdn-settings" class="form-control u-mb10" rows="6" id="<?= $field ?>" name="<?= $field ?>" spellcheck="false"><?= $escape(implode("\n", $policy[$field] ?? [])) ?></textarea>
+    <button type="button" class="button button-secondary" data-hdn-preset="<?= $field ?>" data-hdn-agent-field="<?= $field ?>">Add suggested agents</button>
+    </div></<?= $isOther ? 'details' : 'section' ?>>
     <?php endforeach; ?>
-    <button type="button" class="button button-secondary u-mb10" data-hdn-preset="search_crawlers" data-hdn-agent-field="agents" title="Append LinkupBot, meta-webindexer, PetalBot, Baiduspider and ibou-search to the crawler blocklist. Review before saving: blocking search crawlers can reduce visibility in their services.">Add optional search crawlers</button>
-    <p>Search crawlers are a separate optional list suggestion. No new crawler is blocked until added and saved.</p>
-    <p class="u-mt10">To limit these crawlers only on filtered URLs, add their names inside a Filtered URLs rule instead of this global blocklist.</p>
+    </div>
+    <p class="u-mt10">Lists describe crawler purposes, not whether requests are malicious. Suggested entries are optional. To limit crawlers only on particular URLs, use Filtered URLs.</p>
+    <?php $reviewKind = 'agents'; require $install . '/panel/inventory.php'; unset($reviewKind); ?>
 <?php elseif ($key === 'endpoints'): ?>
     <h2 class="u-mb20">Endpoint rate limits</h2>
     <?php foreach (['login' => 'WordPress login — POST /wp-login.php', 'xmlrpc' => 'WordPress XML-RPC — POST /xmlrpc.php'] as $endpoint => $name): ?>
@@ -90,7 +96,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['cron', 'domain-bans', 'wordpress'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
 <p class="u-mt20"><small>Version <?= $escape($meta['version']) ?></small></p>
 </div></div>
-<script type="application/json" id="hdn-agent-presets"><?= json_encode(['scanners' => $data['presets']['scanners'] ?? [], 'crawlers' => $data['presets']['crawlers'] ?? [], 'search_crawlers' => $data['presets']['search_crawlers'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+<script type="application/json" id="hdn-agent-presets"><?= json_encode(array_map(static fn($category) => $category['entries'], $data['presets']['agent_categories'] ?? []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script type="application/json" id="hdn-probe-presets"><?= json_encode(['probe_files' => $data['presets']['probe_files'] ?? [], 'probe_queries' => $data['presets']['probe_queries'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script><?php readfile($install . '/panel/settings.js'); ?></script>
 <?php if ($isAdmin): ?><script><?php readfile($install . '/panel/rules.js'); ?></script><?php endif; ?>

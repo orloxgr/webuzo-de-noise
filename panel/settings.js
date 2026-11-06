@@ -116,24 +116,64 @@
     };
     initializeReview('hdn-log-scan', 'hdn-analysis', 'log_scan', 'filters', 'Analyze logs');
     initializeReview('hdn-activity-scan', 'hdn-activity', 'activity', 'activity', 'Refresh activity');
+    initializeReview('hdn-agents-scan', 'hdn-agents', 'agents', 'agents', 'Analyze current agents');
+    initializeReview('hdn-php_files-scan', 'hdn-php_files', 'php_files', 'bans', 'Analyze PHP 404s');
+    const appendLines = (field, values, insensitive = false) => {
+        const lines = field.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+        const key = value => insensitive ? value.toLowerCase() : value;
+        const seen = new Set(lines.map(key));
+        let added = 0;
+        values.forEach(value => {
+            value = value.trim();
+            if (value && !/[\r\n]/.test(value) && !seen.has(key(value))) {
+                seen.add(key(value)); lines.push(value); added++;
+            }
+        });
+        field.value = lines.join('\n');
+        if (added) field.dispatchEvent(new Event('input', {bubbles: true}));
+        return added;
+    };
+    // Delegation also handles restored reports and newly loaded result pages.
+    document.addEventListener('change', event => {
+        if (!event.target.matches('[data-hdn-select-inventory]')) return;
+        event.target.closest('[data-hdn-inventory]').querySelectorAll('[data-hdn-inventory-value]:not(:disabled)')
+            .forEach(box => { box.checked = event.target.checked; });
+    });
+    document.addEventListener('click', event => {
+        const button = event.target.closest('[data-hdn-append-selected]');
+        if (!button) return;
+        const report = button.closest('[data-hdn-inventory]');
+        const allowed = report.dataset.hdnInventory === 'agents' ?
+            ['tool_agents', 'ai_agents', 'search_agents', 'seo_agents', 'agents'] : ['bans-missing_files-list'];
+        let added = 0, selected = 0;
+        report.querySelectorAll('[data-hdn-inventory-value]:checked:not(:disabled)').forEach(box => {
+            const destination = box.closest('[data-hdn-inventory-row]').querySelector('[data-hdn-inventory-field]').value;
+            if (!allowed.includes(destination)) return;
+            const field = document.getElementById(destination);
+            if (!field) return;
+            selected++;
+            added += appendLines(field, [box.dataset.hdnInventoryValue], report.dataset.hdnInventory === 'agents');
+            const collapsed = field.closest('details');
+            if (collapsed) collapsed.open = true;
+            box.checked = false;
+        });
+        const all = report.querySelector('[data-hdn-select-inventory]');
+        if (all) all.checked = false;
+        report.querySelector('[data-hdn-append-status]').textContent = selected ?
+            `${added} new entries appended; ${selected - added} already present. Review your lists, then Save & Apply.` : 'Select entries to append first.';
+    });
     const presets = JSON.parse(document.getElementById('hdn-agent-presets').textContent);
     const probePresets = JSON.parse(document.getElementById('hdn-probe-presets').textContent);
     document.querySelectorAll('[data-hdn-probe-preset]').forEach(button => button.addEventListener('click', () => {
         const field = document.getElementById(button.dataset.hdnProbeField);
-        const lines = field.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-        (probePresets[button.dataset.hdnProbePreset] || []).forEach(value => { if (!lines.includes(value)) lines.push(value); });
-        field.value = lines.join('\n');
+        appendLines(field, probePresets[button.dataset.hdnProbePreset] || []);
     }));
     document.getElementById('hdn-probe-domain')?.addEventListener('change', event => {
         document.querySelectorAll('[data-hdn-probe-domain]').forEach(panel => { panel.hidden = panel.dataset.hdnProbeDomain !== event.target.value; });
     });
     document.querySelectorAll('[data-hdn-preset]').forEach(button => button.addEventListener('click', () => {
         const field = document.getElementById(button.dataset.hdnAgentField);
-        const lines = field.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-        (presets[button.dataset.hdnPreset] || []).forEach(agent => {
-            if (!lines.some(line => line.toLowerCase() === agent.toLowerCase())) lines.push(agent);
-        });
-        field.value = lines.join('\n');
+        appendLines(field, presets[button.dataset.hdnPreset] || [], true);
     }));
     const tabs = [...document.querySelectorAll('[data-hdn-tab]')];
     tabs.forEach(button => {

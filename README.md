@@ -8,8 +8,12 @@ to Webuzo.
 
 ## Features
 
-- Separate scanner-tool and crawler lists, private-file protection, login/XML-RPC
-  limits, filtered-URL budgets and missing-static-file rules.
+- Five independent User-Agent lists: scanner tools, AI training crawlers, search
+  indexers, SEO/backlink crawlers and other data collection.
+- Private-file protection, login/XML-RPC limits, filtered-URL budgets and
+  missing-static-file rules.
+- On-demand agent hit counts and PHP-path 404 counts by domain and time window,
+  with selectable append to the editable lists.
 - Global website IP bans and domain-only bans, with editable thresholds,
   durations, exclusions, evidence, history and unban controls.
 - Optional WordPress user-enumeration protection and failed-login bans.
@@ -23,12 +27,18 @@ WordPress failed-login bans use Fail2ban on the web ports.
 
 ## Install
 
-1. Download `webuzo-de-noise-0.1.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.2.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
    To start blocking, select **Enforce**, enable **Private-file protection**, add
    the desired scanner/crawler names and choose **Save & Apply**.
+
+Use **Analyze current agents** in User-Agents or **Analyze PHP 404s** under
+selected PHP file bans to inspect recorded traffic. Select results and choose
+**Append selected to lists**, then **Save & Apply**. Appending preserves existing
+entries, list switches, thresholds and exceptions. The analyses run in the
+background, support cancellation and resume, and paginate the complete results.
 
 Enable the other protections as needed. Domain owners open **Security → De-Noise**
 in their account panel for their domain bans, domains and activity.

@@ -36,6 +36,7 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 <p><?= $key === 'missing_files'
     ? 'Only selected nonexistent PHP files are rejected with 404. Existing files retain normal routing. Count distinct paths per IP across all domains.'
     : 'Match selected parameter names and complete secret file arguments, traversal to listed targets or PHP filter resource arguments, including encoded forms. Reject matches with 404 and count requests per IP across domains. Search parameters, ordinary relative paths and parameter names alone do not match the suggested rules.' ?></p>
+<?php if ($key === 'missing_files'): $reviewKind = 'php_files'; require $install . '/panel/inventory.php'; unset($reviewKind); endif; ?>
 </div></details>
 <?php endforeach; ?>
 <?php $notFound = $ban['any_404'] ?? []; ?>

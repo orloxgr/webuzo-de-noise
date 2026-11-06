@@ -12,6 +12,7 @@ import time
 from policy import (DEFAULT, VERSION, SCANNER_AGENTS, CRAWLER_AGENTS, SEARCH_AGENTS, FILTER_AGENTS,
                     account, domain, validate, site_mode, global_config, site_config)
 import activity
+import agent_catalog
 import auto_bans
 import ban_history
 from presets import RULES
@@ -23,6 +24,8 @@ import wordpress
 import enumeration
 import log_analysis
 import analysis_jobs
+
+REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -282,6 +285,7 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
             'wordpress': wordpress_status,
             'cron': cron_spread.public(load('cron-spread.json', None)) if owner is None else None,
             'presets': {'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
+                        'agent_categories': agent_catalog.CATEGORIES,
                         'filter_agents': FILTER_AGENTS, 'rules': RULES,
                         'probe_files': probe_rules.FILES, 'probe_queries': probe_rules.QUERY_TARGETS,
                         'probe_parameters': probe_rules.QUERY_PARAMETERS} if owner is None else {}}
@@ -305,7 +309,7 @@ def authorize(request):
 def dispatch(request):
     if not isinstance(request, dict):
         raise ValueError('Expected a JSON object')
-    if request.get('action') in ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel'):
+    if request.get('action') in REVIEW_ACTIONS:
         admin, owner = authorize(request)
         if request['action'].startswith('activity_'):
             if set(request) - {'actor', 'owner', 'action', 'minutes', 'job', 'page', 'listing'}:
@@ -323,6 +327,18 @@ def dispatch(request):
             raise PermissionError('Log analysis requires the administrator context')
         if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page'}:
             raise ValueError('Only log-analysis selections can be submitted')
+        for kind in ('agents', 'php_files'):
+            if not request['action'].startswith(kind + '_'):
+                continue
+            operation = request['action'][len(kind) + 1:]
+            if operation == 'start':
+                job = analysis_jobs.start(STATE, None, request['actor'], request.get('target'),
+                    request.get('minutes'), kind=kind)
+            elif operation == 'status':
+                job = analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), kind=kind)
+            else:
+                job = analysis_jobs.cancel(STATE, request.get('job'), request['actor'], kind=kind)
+            return {'ok': True, 'job': job}
         if request['action'] == 'log_scan_start':
             return {'ok': True, 'job': analysis_jobs.start(STATE, None, request['actor'],
                 request.get('target'), request.get('minutes'), request.get('verify_google', False))}
@@ -405,15 +421,15 @@ def dispatch(request):
         if not isinstance(incoming, dict):
             raise ValueError('Expected policy settings')
         previous = policy
-        if incoming.get('schema') in (6, 7, 8, 9):
+        if incoming.get('schema') in (6, 7, 8, 9, 10):
             if not isinstance(incoming.get('domain_bans'), dict):
                 raise ValueError('Invalid domain automatic-ban policy')
             incoming = {**incoming, 'domain_bans': {**incoming.get('domain_bans', {}),
-                'sites': previous['domain_bans']['sites'] if incoming.get('schema') in (7, 8, 9) else {}}}
+                'sites': previous['domain_bans']['sites'] if incoming.get('schema') in (7, 8, 9, 10) else {}}}
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') != 9:
+        if incoming.get('schema') not in (9, 10):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9):
+        if incoming.get('schema') not in (8, 9, 10):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):
@@ -485,7 +501,7 @@ def main():
             request = json.loads(raw)
         # An explicit read-only review has its own queued scan lock. It
         # must not hold the protection/recovery lock or run mutation recovery.
-        if isinstance(request, dict) and request.get('action') in ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel'):
+        if isinstance(request, dict) and request.get('action') in REVIEW_ACTIONS:
             if load('active.json', {}).get('active') is not True:
                 raise RuntimeError('De-Noise is not active')
             return dispatch(request)

@@ -65,3 +65,17 @@ class ReviewPanelTests(unittest.TestCase):
         self.assertNotIn('<script>alert', body)
         self.assertNotIn('<form', body)
         self.assertIn('360 minutes', body)
+
+    def test_inventory_values_and_append_attributes_are_escaped(self):
+        value = 'Unknown"><script>alert(1)</script>'
+        for kind in ('agents', 'php_files'):
+            analysis = dict(inventory_kind=kind, minutes=30, totals={'requests':3}, domains=1,
+                findings_total=1, bytes_read=100, note='Observed traffic',
+                categories={'agents':'Other'}, findings=[dict(value=value, candidate=value,
+                    category='agents', count=3, domains=[dict(domain='<img src=x>', count=3)])])
+            body = self.render('inventory-output.php', analysis)
+            self.assertIn('&lt;script&gt;', body)
+            self.assertNotIn('<script>alert', body)
+            self.assertNotIn('<img src=x>', body)
+            self.assertIn('Append selected to lists', body)
+            self.assertNotIn('form="hdn-settings"', body)

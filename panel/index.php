@@ -27,11 +27,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($request['action'] === 'save') {
             $agents = is_string($_POST['agents'] ?? null) ? preg_split('/\r\n|\r|\n/', trim($_POST['agents'])) : [];
             $tools = is_string($_POST['tool_agents'] ?? null) ? preg_split('/\r\n|\r|\n/', trim($_POST['tool_agents'])) : [];
-            $submitted = ['schema' => 9, 'mode' => $_POST['mode'] ?? '', 'agents' => array_values(array_filter($agents, static fn($line) => trim($line) !== '')),
+            $submitted = ['schema' => 10, 'mode' => $_POST['mode'] ?? '', 'agents' => array_values(array_filter($agents, static fn($line) => trim($line) !== '')),
                 'log_rejections' => isset($_POST['log_rejections']), 'mail_protection' => isset($_POST['mail_protection']),
                 'tool_agents' => array_values(array_filter($tools, static fn($line) => trim($line) !== '')),
                 'agents_enabled' => isset($_POST['agents_enabled']), 'tool_agents_enabled' => isset($_POST['tool_agents_enabled']),
                 'scanners' => isset($_POST['scanners'])];
+            foreach (['ai_agents', 'search_agents', 'seo_agents'] as $field) {
+                $lines = is_string($_POST[$field] ?? null) ? preg_split('/\r\n|\r|\n/', trim($_POST[$field])) : [];
+                $submitted[$field] = array_values(array_filter($lines, static fn($line) => trim($line) !== ''));
+                $submitted[$field . '_enabled'] = isset($_POST[$field . '_enabled']);
+            }
             $submitted['enumeration'] = ['enabled' => isset($_POST['enumeration_enabled']),
                 'rest' => isset($_POST['enumeration_rest']), 'author_ids' => isset($_POST['enumeration_author_ids']),
                 'author_archives' => isset($_POST['enumeration_author_archives']),
@@ -109,11 +114,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($request['action'] === 'activity_start') {
             $request['minutes'] = filter_var($_POST['analysis_minutes'] ?? '', FILTER_VALIDATE_INT);
-        } elseif (in_array($request['action'], ['log_scan', 'log_scan_start'], true)) {
+        } elseif (in_array($request['action'], ['log_scan', 'log_scan_start', 'agents_start', 'php_files_start'], true)) {
             $request['target'] = $_POST['analysis_target'] ?? '';
             $request['minutes'] = filter_var($_POST['analysis_minutes'] ?? '', FILTER_VALIDATE_INT);
             $request['verify_google'] = isset($_POST['analysis_verify_google']);
-        } elseif (in_array($request['action'], ['log_scan_status', 'log_scan_cancel', 'activity_status', 'activity_cancel'], true)) {
+        } elseif (in_array($request['action'], ['log_scan_status', 'log_scan_cancel', 'activity_status', 'activity_cancel', 'agents_status', 'agents_cancel', 'php_files_status', 'php_files_cancel'], true)) {
             $request['job'] = $_POST['analysis_job'] ?? '';
             $request['page'] = filter_var($_POST['analysis_page'] ?? 1, FILTER_VALIDATE_INT);
         } elseif ($request['action'] === 'history_clear') {
@@ -153,15 +158,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if (is_array($request['preferences'])) $request['preferences'] = (object)$request['preferences'];
         }
-        if (!in_array($request['action'], ['save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'domain_bans_save', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel'], true)) {
+        if (!in_array($request['action'], ['save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'domain_bans_save', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
             $error = 'Unsupported operation.';
         } else {
-            $isReview = strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0;
+            $isReview = strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0;
             $result = $bridge($request);
             if ($isReview && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ?? '') === '1') {
                 if (!empty($result['job']['analysis'])) {
                     $data = ['analysis' => $result['job']['analysis']];
-                    ob_start(); require $install . ($request['action'][0] === 'a' ? '/panel/activity-output.php' : '/panel/analysis-output.php');
+                    ob_start();
+                    $reviewKind = $result['job']['analysis']['inventory_kind'] ?? null;
+                    require $install . ($reviewKind ? '/panel/inventory-output.php' : (strpos($request['action'], 'activity_') === 0 ? '/panel/activity-output.php' : '/panel/analysis-output.php'));
+                    unset($reviewKind);
                     $result['report'] = ob_get_clean();
                     unset($result['job']['analysis']);
                 }

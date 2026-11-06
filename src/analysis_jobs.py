@@ -69,7 +69,7 @@ def cleanup(state):
 
 
 def start(state, sites, actor, target, minutes, verify_google=False, kind="scan", owner=None):
-    if kind not in ('scan', 'activity'):
+    if kind not in ('scan', 'activity', 'agents', 'php_files'):
         raise ValueError('Invalid review type')
     if owner is not None and (not isinstance(owner, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_-]*', owner)):
         raise PermissionError('Invalid account context')
@@ -219,7 +219,8 @@ def worker(state, job):
             else:
                 result = log_analysis.scan(sites, request['target'], request['minutes'], state,
                     request['verify_google'], now=request.get('requested_at'), progress=progress,
-                    cancelled=lambda: (path / 'cancel.json').exists(), report_path=path / 'report.sqlite')
+                    cancelled=lambda: (path / 'cancel.json').exists(), report_path=path / 'report.sqlite',
+                    inventory_kind=request['kind'] if request.get('kind') in ('agents', 'php_files') else None)
             write(path, 'result.json', result)
             write(path, 'status.json', dict(state='complete', progress=progress_value))
     except InterruptedError:

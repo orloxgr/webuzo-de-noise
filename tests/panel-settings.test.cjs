@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../panel/settings.js'), 'utf8');
 
-function fixture(replies, {action = null, remembered = null, activity = false} = {}) {
+function fixture(replies, {action = null, remembered = null, activity = false, inventory = null} = {}) {
     if (!remembered) replies.unshift({ok:true,job:{id:null,state:'idle'}});
     const handlers = {}, requests = [];
     let updated = false, stored = remembered;
@@ -22,10 +22,11 @@ function fixture(replies, {action = null, remembered = null, activity = false} =
         getAttribute: () => action,
         querySelector: selector => selector.startsWith('button') ? button : (fields[selector] || {value: 'csrf-token'}),
         addEventListener: (event, fn) => {handlers[event] = fn;}};
-    const nodes = {[activity ? 'hdn-activity-scan' : 'hdn-log-scan']: form,
-        [activity ? 'hdn-activity-progress' : 'hdn-analysis-progress']: progress,
-        [activity ? 'hdn-activity-cancel' : 'hdn-analysis-cancel']: cancel,
-        [activity ? 'hdn-activity-output' : 'hdn-analysis-output']: output,
+    const reviewPrefix = inventory ? 'hdn-' + inventory : activity ? 'hdn-activity' : 'hdn-analysis';
+    const nodes = {[inventory ? 'hdn-' + inventory + '-scan' : activity ? 'hdn-activity-scan' : 'hdn-log-scan']: form,
+        [reviewPrefix + '-progress']: progress,
+        [reviewPrefix + '-cancel']: cancel,
+        [reviewPrefix + '-output']: output,
         'hdn-agent-presets': {textContent: '{}'}, 'hdn-probe-presets': {textContent: '{}'}};
     vm.runInNewContext(source, {
         document: {getElementById: id => nodes[id], querySelectorAll: () => [], addEventListener() {}, importNode: node => node},
@@ -148,4 +149,56 @@ test('tabs switch panels and keyboard focus without depending on the panel theme
     tabs[2].key('ArrowDown');
     assert.equal(panels['panel-filters'].hidden,false); assert.equal(save.hidden,false);
     assert.equal(tabs[1].focused,true);
+});
+
+for (const kind of ['agents', 'php_files']) {
+    test(kind + ' inventory uses independent authenticated resumable endpoints', async () => {
+        const f = fixture([queued, done], {inventory:kind}); await f.submit();
+        assert.equal(f.requests[0].options.body.fields.get('action'), kind+'_start');
+        assert.equal(f.requests[1].options.body.fields.get('action'), kind+'_status');
+        assert.equal(f.requests[0].options.body.fields.get('tab'), kind === 'agents' ? 'agents' : 'bans');
+        assert.equal(f.requests[0].options.body.fields.has('policy'), false);
+        assert.equal(f.updated(), true);
+    });
+}
+
+test('append merges selected rows, deduplicates and preserves switches and unrelated edits', () => {
+    const handlers = {}, status = {}, collapsed = {open:false}, all = {checked:true};
+    const fields = {
+        ai_agents:{value:'GPTBot\nExistingTraining', dispatchEvent(){this.edited=true;},closest:()=>null},
+        agents:{value:'MyCustomAgent',dispatchEvent(){this.edited=true;},closest:()=>collapsed},
+        'bans-missing_files-list':{value:'/keep.php',dispatchEvent(){this.edited=true;},closest:()=>null},
+        'hdn-agent-presets':{textContent:'{}'}, 'hdn-probe-presets':{textContent:'{}'}
+    };
+    const switches = {ai_agents_enabled:false, agents_enabled:false};
+    const row = (value, destination) => ({checked:true,dataset:{hdnInventoryValue:value},
+        closest:()=>({querySelector:()=>({value:destination})})});
+    const boxes = [row('gptbot','ai_agents'),row('NewAgent','agents'),row('NewAgent','agents'),row('other','invalid')];
+    const report = {dataset:{hdnInventory:'agents'},querySelectorAll:()=>boxes,
+        querySelector:selector=>selector.includes('status') ? status : all};
+    const button={closest:()=>report};
+    vm.runInNewContext(source, {Event:class{}, document:{getElementById:id=>fields[id],querySelectorAll:()=>[],
+        addEventListener:(name,fn)=>{handlers[name]=fn;}}});
+    handlers.click({target:{closest:()=>button}});
+    assert.equal(fields.ai_agents.value,'GPTBot\nExistingTraining');
+    assert.equal(fields.agents.value,'MyCustomAgent\nNewAgent');
+    assert.equal(fields['bans-missing_files-list'].value,'/keep.php');
+    assert.deepEqual(switches,{ai_agents_enabled:false,agents_enabled:false});
+    assert.match(status.textContent,/1 new entries appended; 2 already present/);
+    assert.equal(collapsed.open,true); assert.equal(all.checked,false);
+    assert.equal(boxes[0].checked,false); assert.equal(boxes[3].checked,true);
+    assert.equal(fields.agents.edited,true);
+});
+
+test('PHP inventory appends exact paths and keeps case-sensitive URL distinctions', () => {
+    const handlers={},status={},field={value:'/Keep.php',closest:()=>null,dispatchEvent(){}};
+    const boxes=['/Keep.php','/keep.php','/new.php'].map(value=>({checked:true,dataset:{hdnInventoryValue:value},
+        closest:()=>({querySelector:()=>({value:'bans-missing_files-list'})})}));
+    const report={dataset:{hdnInventory:'php_files'},querySelectorAll:()=>boxes,
+        querySelector:selector=>selector.includes('status') ? status : {checked:true}};
+    const nodes={'bans-missing_files-list':field,'hdn-agent-presets':{textContent:'{}'},'hdn-probe-presets':{textContent:'{}'}};
+    vm.runInNewContext(source,{Event:class{},document:{getElementById:id=>nodes[id],querySelectorAll:()=>[],addEventListener:(name,fn)=>{handlers[name]=fn;}}});
+    handlers.click({target:{closest:()=>({closest:()=>report})}});
+    assert.equal(field.value,'/Keep.php\n/keep.php\n/new.php');
+    assert.match(status.textContent,/2 new entries/);
 });

@@ -9,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import engine
 import webuzo
-from policy import DEFAULT, LEGACY_KEYS, MARKER
+from policy import V9_KEYS, DEFAULT, LEGACY_KEYS, MARKER
 
 
 def fixture_read(path):
@@ -174,7 +174,7 @@ class AuthorizationTests(unittest.TestCase):
         saved = copy.deepcopy(DEFAULT)
         saved['bans']['missing_files'].update(enabled=True, maxretry=4)
         saved['probe_exceptions']['queries'] = {'alice/example.test': ['/manager.php']}
-        incoming = copy.deepcopy(DEFAULT); incoming['schema'] = 4; incoming.pop('probe_exceptions'); incoming.pop('domain_bans')
+        incoming = {key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS}; incoming['schema'] = 4; incoming.pop('probe_exceptions'); incoming.pop('domain_bans')
         incoming.pop('enumeration')
         for key in ('missing_files', 'suspicious_queries', 'any_404'): incoming['bans'].pop(key)
         with patch.object(engine, 'authorize', return_value=(True, 'admin')), \

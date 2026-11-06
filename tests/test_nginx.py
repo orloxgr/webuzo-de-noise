@@ -16,6 +16,7 @@ from native_nginx import isolated_config
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 from policy import DEFAULT, global_config, site_config
 import ban_evidence
+import agent_catalog
 
 NGINX = os.environ.get('HDN_TEST_NGINX')
 
@@ -281,12 +282,14 @@ class NativeNginxTests(unittest.TestCase):
         finally:
             subprocess.run([*command,'-s','quit'],capture_output=True,timeout=5)
 
-    def test_tool_and_crawler_switches_are_independent_in_real_nginx(self):
-        for index, (tools, crawlers) in enumerate([(False, True), (True, False), (False, False)]):
+    def test_all_five_agent_switches_are_independent_in_real_nginx(self):
+        for index, selected in enumerate([None, *agent_catalog.CATEGORIES]):
             with socket.socket() as probe:
                 probe.bind(('127.0.0.1', 0)); port = probe.getsockname()[1]
             policy = copy.deepcopy(DEFAULT); policy['mode'] = 'enforce'
-            policy.update(tool_agents=['ProbeTool'], agents=['BulkCrawler'], tool_agents_enabled=tools, agents_enabled=crawlers)
+            for field in agent_catalog.CATEGORIES:
+                policy[field] = ['Toggle-' + field]
+                policy[field + '_enabled'] = field == selected
             text = 'pid logs/toggles.pid;\nerror_log logs/toggles.log;\nevents {}\nhttp {\n' + global_config(policy, [])
             text += 'server { listen 127.0.0.1:' + str(port) + '; server_name switches.test;\n'
             text += site_config(policy, {'key': 'alice/switches.test'}).replace('/var/log/webuzo-de-noise/matches.log', (self.directory / 'toggles-matches.log').as_posix())
@@ -296,11 +299,12 @@ class NativeNginxTests(unittest.TestCase):
             result = subprocess.run(command, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             try:
-                for agent, blocked in [('ProbeTool', tools), ('BulkCrawler', crawlers)]:
+                for field in agent_catalog.CATEGORIES:
+                    agent, blocked = 'Toggle-' + field, field == selected
                     connection = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
                     connection.request('GET', '/', headers={'Host': 'switches.test', 'User-Agent': agent})
                     response = connection.getresponse(); status = response.status; response.read(); connection.close()
-                    self.assertEqual(status, 403 if blocked else 200, (agent, tools, crawlers))
+                    self.assertEqual(status, 403 if blocked else 200, (agent, selected))
             finally:
                 subprocess.run([*command, '-s', 'quit'], capture_output=True, timeout=5)
 

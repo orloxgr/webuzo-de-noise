@@ -66,3 +66,13 @@
 .hdn-analysis-finding { padding: 12px; border: 1px solid currentColor; border-radius: 4px; }
 .hdn-analysis p, .hdn-analysis code, .hdn-analysis td { overflow-wrap: anywhere; white-space: normal; }
 .hdn-activity-agent { max-width: 30rem; overflow-wrap: anywhere; white-space: normal; }
+.hdn-agent-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.hdn-agent-card { min-width: 0; }
+.hdn-agent-other { grid-column: 1 / -1; }
+.hdn-inventory { padding: 16px 0; }
+.hdn-inventory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.hdn-inventory-table td { vertical-align: top; }
+.hdn-inventory-table code { white-space: normal; overflow-wrap: anywhere; }
+.hdn-inventory-table td:nth-child(2) { max-width: 30rem; }
+.hdn-inventory-table td:last-child { min-width: 180px; }
+@media (max-width: 640px) { .hdn-agent-grid { grid-template-columns: minmax(0, 1fr); } }

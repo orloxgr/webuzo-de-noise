@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Webuzo De-Noise
-Version: 0.1.0
+Version: 0.2.0
 Description: Filter unwanted web requests and manage domain protection.
 Author: Byron Iniotakis
 Author URI: https://www.iniotakis.com

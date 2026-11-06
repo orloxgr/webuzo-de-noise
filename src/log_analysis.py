@@ -21,6 +21,7 @@ import time
 from urllib.parse import parse_qsl, unquote, urlsplit
 
 import storage
+import agent_catalog
 from policy import domain as valid_domain
 
 LOG_ROOTS = (Path('/usr/local/apps/nginx/var/log'),)
@@ -177,7 +178,7 @@ def recommendations(group, title):
     if title == 'Recorded slow request timings':
         return [dict(title='Measure the origin work', detail='Compare recorded upstream timings, cache state, PHP workers and slow database queries for this route. Optimize the responsible site component before choosing a crawler limit.')]
     if title == 'Repeated PHP-path 404 responses':
-        return [dict(title='Review the missing-PHP list', detail='Check whether the route belongs to the application. Only after confirming it is an unwanted probe, consider adding the literal path in IP bans → selected missing PHP files, scoped to this domain. Keep legitimate virtual routes out.')]
+        return [dict(title='Review the missing-PHP list', detail='Check whether the route belongs to the application. Only after confirming it is an unwanted probe, consider adding the literal path in IP bans β†’ selected missing PHP files, scoped to this domain. Keep legitimate virtual routes out.')]
     return [dict(title='Inspect the route before filtering', detail='Identify the responsible plugin, visitors and integrations on this domain. Preserve functional REST, AJAX and cart requests. Frequency alone does not justify a block.')]
 
 
@@ -249,14 +250,21 @@ def native_log_paths(site, root):
                 yield path
 
 
-def scan(sites, target, minutes, state=None, verify_google=False, now=None, progress=None, cancelled=None, report_path=None):
+def scan(sites, target, minutes, state=None, verify_google=False, now=None, progress=None, cancelled=None, report_path=None, inventory_kind=None):
+    if inventory_kind not in (None, 'agents', 'php_files'):
+        raise ValueError('Invalid traffic inventory')
     chosen = selection(sites, target, minutes)
     if type(verify_google) is not bool:
         raise ValueError('Invalid Google verification switch')
     now = time.time() if now is None else now
     started = time.monotonic(); cutoff = now - minutes * 60
     ranges, verification = (google_ranges(state, now) if verify_google else ([], 'Not requested; crawler names are unverified claims'))
-    seen, groups, coverage, files = set(), Groups(report_path), [], []
+    if inventory_kind:
+        from traffic_inventory import Inventory
+        groups = Inventory(inventory_kind, report_path)
+    else:
+        groups = Groups(report_path)
+    seen, coverage, files = set(), [], []
     totals = Counter(image_records_excluded=0); errors = []; bytes_read = 0; group_dropped = False
     salt = os.urandom(16); date_cache = {}
     try:
@@ -334,6 +342,9 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
                         continue
                     records += 1; totals['requests'] += 1; totals['status_' + status] += 1
                     if progress: progress(dict(records=totals['requests'], bytes=bytes_read, files_done=index, files_total=len(files), domain=site['domain']))
+                    if inventory_kind:
+                        groups.observe(site, path_only, status, agent, at)
+                        continue
                     decoded_path = unquote(unquote(path_only))
                     if IMAGE.search(decoded_path):
                         # Preserve positive secret-probe evidence even when the
@@ -389,15 +400,20 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
         selected_domains = {site['domain'] for site in chosen}
         seen_domains = {row['domain'] for row in coverage}
         partial = bool(errors or group_dropped or totals['unparsed'] or totals['incomplete_lines'] or any(row['partial'] for row in coverage) or selected_domains - seen_domains)
-        suggestions = findings(groups, persist=report_path is not None)
+        if inventory_kind:
+            suggestions, inventory_total = groups.finish(report_path is not None)
+        else:
+            suggestions = findings(groups, persist=report_path is not None)
         return dict(generated_at=now, minutes=minutes, target=target, domains=len(chosen), bytes_read=bytes_read,
                     elapsed_seconds=round(time.monotonic() - started, 3), partial=partial, limits={},
                     totals=dict(totals), findings=suggestions,
-                    findings_total=groups.suggestion_count() if report_path is not None else len(suggestions),
+                    findings_total=inventory_total if inventory_kind else (groups.suggestion_count() if report_path is not None else len(suggestions)),
+                    inventory_kind=inventory_kind,
+                    categories={key: value['title'] for key, value in agent_catalog.CATEGORIES.items()} if inventory_kind else {},
                     findings_database=report_path is not None, coverage=coverage, errors=errors,
                     unavailable_domains=sorted(selected_domains - seen_domains), group_limit_reached=group_dropped,
                     verification=verification, verified_google_requested=verify_google,
-                    note='Native log records are not total incoming traffic or PHP executions. Early blocks and cache HITs may be absent. Known UltraCache revalidation/bucket parameters do not count as content-filter diversity; this does not verify the caller or exempt errors, slow requests or secret probes. Query values, client IPs and raw User-Agents are not returned or retained. No protection setting was changed.')
+                    note=('Counts reflect retained native access logs. Cache HITs and early blocks may be absent; layered logs may duplicate records. Agent names are unverified declarations. No protection setting was changed.' if inventory_kind else 'Native log records are not total incoming traffic or PHP executions. Early blocks and cache HITs may be absent. Known UltraCache revalidation/bucket parameters do not count as content-filter diversity; this does not verify the caller or exempt errors, slow requests or secret probes. Query values, client IPs and raw User-Agents are not returned or retained. No protection setting was changed.'))
     finally:
         groups.close()
 
