@@ -4,8 +4,39 @@ Request filtering in Nginx before requests reach Apache or PHP, with per-domain
 controls and traffic analysis inside the Webuzo panel.
 
 This project ports [Hestia De-Noise](https://github.com/orloxgr/hestia-de-noise)
-to Webuzo. Development and compatibility testing are in progress. Installation
-packages will be published after the Webuzo integration passes its runtime tests.
+to Webuzo.
+
+## Features
+
+- Separate scanner-tool and crawler lists, private-file protection, login/XML-RPC
+  limits, filtered-URL budgets and missing-static-file rules.
+- Global website IP bans and domain-only bans, with editable thresholds,
+  durations, exclusions, evidence, history and unban controls.
+- Optional WordPress user-enumeration protection and failed-login bans.
+- HTTP webmail protection, on-demand activity/log analysis, crawler verification
+  and robots.txt previews.
+- Native cron schedule preview/apply/restore, bulk domain modes and account views
+  restricted to the account's own domains.
+
+Global website IP bans reject HTTP/HTTPS requests across hosted websites.
+WordPress failed-login bans use Fail2ban on the web ports.
+
+## Install
+
+1. Download `webuzo-de-noise-0.1.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
+   the ZIP and activate **Webuzo De-Noise**.
+3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
+   To start blocking, select **Enforce**, enable **Private-file protection**, add
+   the desired scanner/crawler names and choose **Save & Apply**.
+
+Enable the other protections as needed. Domain owners open **Security → De-Noise**
+in their account panel for their domain bans, domains and activity.
+
+Upload a newer ZIP through the same plugin manager to update. Settings are
+preserved. Deactivate the plugin before removing its source directory; deactivation
+removes its filtering rules and scheduled maintenance while retaining settings
+and history for reactivation.
 
 ## Integration
 
@@ -31,6 +62,9 @@ hosting accounts retain access only to their own website activity.
 - Webuzo with its native website Nginx running and custom domain includes enabled.
 - Python 3.9 or later with SQLite support, available as `/usr/bin/python3`.
 - Administrator access to install the plugin through Webuzo's plugin manager.
+
+Validated on Webuzo 4.9.1 with Ubuntu 24.04 and native Nginx. The
+[feature coverage](FEATURES.md) lists the runtime and compatibility checks.
 
 WordPress failed-login bans additionally require Fail2ban and an active WP fail2ban
 plugin on each protected WordPress site. Its authentication events must reach the

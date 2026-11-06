@@ -46,7 +46,7 @@ class UpdateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder); (root / 'tools').mkdir()
             shutil.copyfile(ROOT / 'tools/build.py', root / 'tools/build.py')
-            for name in ('webuzo-de-noise.php', 'LICENSE', 'README.md', 'UPSTREAM'):
+            for name in ('webuzo-de-noise.php', 'LICENSE', 'README.md', 'FEATURES.md', 'UPSTREAM'):
                 (root / name).write_text('fixture')
             (root / 'info.json').write_text('{"version":"0.1.0"}')
             for name in ('src', 'panel', 'wordpress', 'config'):

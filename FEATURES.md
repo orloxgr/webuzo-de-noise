@@ -1,7 +1,10 @@
 # Feature coverage
 
 The source feature set is Hestia De-Noise at the commit recorded in `UPSTREAM`.
-The Webuzo port must verify each feature separately before release.
+The Webuzo integration was validated on Webuzo 4.9.1, Ubuntu 24.04, native website
+Nginx 1.30.5 and PHP 8.3. Panel PHP syntax is also checked with EMPS PHP 7.4;
+Python source syntax is checked for Python 3.9 compatibility. The automated suite
+contains 262 passing Python tests and 13 passing JavaScript tests.
 
 | Feature | Webuzo integration | Validation |
 | --- | --- | --- |
@@ -31,6 +34,6 @@ The Webuzo port must verify each feature separately before release.
 | Transaction rollback and interrupted recovery | Plugin-owned journal | Failure/recovery and custom-include preservation tests; native invalid EMPS candidate restores both website and panel configurations, clears the journal and preserves policy/history |
 | Confirmed Nginx reload | Native configured PID and new-worker verification | Native runtime on rules, account synchronization and unban |
 | Log rotation | Plugin-owned logrotate entry | Native forced rotations, including compressed records: activity and exact three-probe automatic-ban threshold preserved; worker-owned log fixtures |
-| Disable, deactivate, uninstall and upgrade | Native plugin lifecycle | Native manager deactivation removes website/webmail rules, both documented custom blocks and cron; reactivation restores saved protection. Native ZIP update preserves the exact active policy, website/webmail enforcement and normal requests. Stale-bytecode regression verified |
+| Disable, deactivate, uninstall and upgrade | Native plugin lifecycle | Cold install with source/state/configuration/logs/queue absent starts with empty Observe defaults. Native activation, enforcement, deactivation and original-installation restoration pass 15 HTTP/state/configuration checks. Deactivation removes website/webmail rules, both custom blocks and maintenance. Native ZIP update preserves the exact active policy and normal requests. Stale-bytecode regression verified |
 | Core/template integrity and rebuild persistence | Hash comparison and native rebuild | Original 598 PHP sources unchanged. Native virtual-host rebuild and reboot preserve website and shared webmail rules; ordinary Roundcube login remains available. Official Webuzo updater ran on current 4.9.1; no newer-version transition was available |
 | Cross-account isolation and hostile input | Runtime security tests | Native settings hashes remain unchanged after forbidden requests; each completed account report excludes the other account; foreign job status/cancellation rejected. Direct PHP template access denied |

@@ -14,7 +14,7 @@ def build():
     output = ROOT / 'dist'
     output.mkdir(exist_ok=True)
     target = output / ('webuzo-de-noise-' + version + '.zip')
-    paths = [ROOT / name for name in ('webuzo-de-noise.php', 'info.json', 'LICENSE', 'README.md', 'UPSTREAM')]
+    paths = [ROOT / name for name in ('webuzo-de-noise.php', 'info.json', 'LICENSE', 'README.md', 'FEATURES.md', 'UPSTREAM')]
     for folder in ('src', 'panel', 'wordpress', 'config'):
         paths += [path for path in (ROOT / folder).rglob('*') if path.is_file() and
                   '__pycache__' not in path.parts and path.suffix != '.pyc' and path.name != 'menu.js']
