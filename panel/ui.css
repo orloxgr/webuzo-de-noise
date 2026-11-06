@@ -1,0 +1,36 @@
+/* Addon-scoped layout; retain Hestia's native colors, controls and tabs. */
+.hdn-ban-pager{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hdn-ban-pager [aria-current="page"]{font-weight:700;outline:1px solid currentColor}
+#hdn-container { min-width: 0; max-width: 100%; width: 100%; }
+#hdn-container > .form-container { min-width: 0; width: 100%; }
+#hdn-tabs { min-width: 0; max-width: 100%; }
+#hdn-container [hidden] { display: none !important; }
+#hdn-tabs > .tabs-items { display: grid; grid-template-columns: repeat(var(--hdn-tab-columns), minmax(0, 1fr)); gap: 0; width: 100%; max-width: 100%; overflow: visible; }
+#hdn-tabs > .tabs-items > .tabs-item { min-width: 0; width: 100%; margin: 0; padding: 12px 6px; font-size: 13px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+#hdn-tabs > .tabs-items > .tabs-item:last-child:nth-child(odd) { grid-column: span 2; }
+#hdn-panel-cron { min-width: 0; }
+#hdn-panel-cron .hdn-cron-table-wrap { max-width: 100%; overflow-x: auto; }
+#hdn-panel-cron .hdn-cron-table { width: 100%; table-layout: fixed; }
+#hdn-panel-cron .hdn-cron-table th,
+#hdn-panel-cron .hdn-cron-table td { white-space: normal; overflow-wrap: anywhere; vertical-align: top; }
+#hdn-panel-cron .hdn-cron-table th:first-child { width: 8%; }
+#hdn-panel-cron .hdn-cron-table th:nth-child(3) { width: 32%; }
+#hdn-panel-cron .hdn-cron-table code { white-space: normal; overflow-wrap: anywhere; }
+.hdn-scoped-table-wrap { max-width: 100%; overflow-x: auto; }
+#hdn-panel-domain-bans td { overflow-wrap: anywhere; }
+#hdn-panel-domain-bans .box-collapse-content { padding: 14px 20px; }
+@media (max-width: 640px) {
+    #hdn-tabs.hdn-admin-tabs > .tabs-items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #hdn-panel-cron .hdn-cron-table { min-width: 570px; }
+}
+.hdn-wp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; }
+.hdn-wp-grid .form-control { width: 100%; box-sizing: border-box; }
+.hdn-ban-details { max-width: 44rem; min-width: 16rem; }
+.hdn-ban-details summary { cursor: pointer; }
+.hdn-ban-details ul { padding-left: 1.2rem; }
+.hdn-ban-details li { margin-bottom: .6rem; overflow-wrap: anywhere; }
+.hdn-ban-details code { white-space: normal; overflow-wrap: anywhere; }
+.hdn-analysis { padding-bottom: 20px; border-bottom: 1px solid currentColor; }
+.hdn-analysis-finding { padding: 12px; border: 1px solid currentColor; border-radius: 4px; }
+.hdn-analysis p, .hdn-analysis code, .hdn-analysis td { overflow-wrap: anywhere; white-space: normal; }
+.hdn-activity-agent { max-width: 30rem; overflow-wrap: anywhere; white-space: normal; }

@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+artifacts/
+.venv/
+*.pem
+*.key
+credentials*
+*.log
+*.db
+*.sqlite*
