@@ -9,7 +9,7 @@ import enumeration
 import agent_catalog
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',

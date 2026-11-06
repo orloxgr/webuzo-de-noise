@@ -27,7 +27,7 @@ WordPress failed-login bans use Fail2ban on the web ports.
 
 ## Install
 
-1. Download `webuzo-de-noise-0.2.1.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.2.2.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
@@ -49,6 +49,36 @@ Upload a newer ZIP through the same plugin manager to update. Settings are
 preserved. Deactivate the plugin before removing its source directory; deactivation
 removes its filtering rules and scheduled maintenance while retaining settings
 and history for reactivation.
+
+## WordPress user-enumeration protection
+
+- **Enable user-enumeration protection** is the main switch for the selected
+  protections. Domains in Enforce reject matching public requests with HTTP 403;
+  Observe records matches and Off disables protection for that domain.
+- **Protect public REST user lists and profiles** restricts anonymous access to
+  the API user list and numeric user profiles. Authenticated requests keep their
+  normal WordPress permissions. Public features that fetch these profiles may be
+  affected; other API routes, such as posts and pages, keep their normal behavior.
+- **Protect author-ID discovery** blocks requests such as `/?author=1` that can
+  reveal an author slug through a redirect. Author archive URLs stay public
+  unless the archive option is also enabled.
+- **Also protect public author archive pages** restricts pages such as
+  `/author/name/` to authenticated users. Visitors and search crawlers receive
+  HTTP 403 there; individual articles remain available. Leave it off when public
+  author pages are needed.
+
+No manual WordPress plugin installation is required for these options. After
+**Save & Apply**, De-Noise automatically installs its User Enumeration Guard as a
+[Must-Use plugin](https://developer.wordpress.org/advanced-administration/plugins/mu-plugins/)
+for selected domains in Enforce. It loads automatically and appears in
+**Plugins > Must-Use**. Observe does not install the helper for that domain.
+Disable the main switch and Save & Apply to remove the helper when no protected
+domain sharing that WordPress installation needs it. All three protections use
+this same helper; WP fail2ban is only needed for the separate login-ban feature.
+
+The managed file is `wp-content/mu-plugins/webuzo-de-noise-user-enumeration.php`.
+The integration requires the standard WordPress content/MU plugin directories;
+custom directory settings report an error and require separate integration.
 
 ## Integration
 
