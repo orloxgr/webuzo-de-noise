@@ -30,8 +30,16 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
         [reviewPrefix + '-cancel']: cancel,
         [reviewPrefix + '-output']: output,
         'hdn-agent-presets': {textContent: '{}'}, 'hdn-probe-presets': {textContent: '{}'}};
+    const appendButtons = inventory === 'agents' ? ['tool_agents','ai_agents','search_agents','seo_agents','agents'].map(category => {
+        nodes[category] = {value:'Existing custom agent', dispatchEvent(){this.edited=true;}};
+        nodes['hdn-analyzed-' + category] = {textContent:''};
+        const item = {dataset:{hdnAppendAnalyzed:category},disabled:true,
+            addEventListener:(_, fn)=>{item.click=fn;}};
+        return item;
+    }) : [];
     vm.runInNewContext(source, {
-        document: {getElementById: id => nodes[id], querySelectorAll: () => [], addEventListener() {}, importNode: node => node,
+        Event:class{},
+        document: {getElementById: id => nodes[id], querySelectorAll: selector => selector === '[data-hdn-append-analyzed]' ? appendButtons : [], addEventListener() {}, importNode: node => node,
             body:{appendChild(){}}, createElement:()=>({click(){downloads.push({blob:exportedBlob,name:this.download});},remove(){}})},
         location: {pathname: '/plugins/de-noise/', href: 'https://panel.test/plugins/de-noise/?tab=filters'},
         sessionStorage: {getItem: () => stored, setItem: (_, value) => {stored = value;}},
@@ -47,12 +55,62 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
         DOMParser: class {parseFromString() {return {getElementById: () => ({childNodes: ['report']})};}}
     });
     if (!remembered) requests.shift(); // Initial status lookup is not a new scan.
-    return {handlers, requests, button, progress, fields, downloads, exportStatus,
+    return {handlers, requests, button, progress, fields, downloads, exportStatus, appendButtons, nodes,
         exportCSV:()=>handlers.page({target:{closest:selector=>selector === '[data-hdn-export-agents]' ? exportButton : null}}), updated: () => updated,
         submit: () => handlers.submit({preventDefault() {}})};
 }
 const queued = {ok: true, job: {id: 'one', state: 'queued'}};
 const done = {ok: true, job: {id: 'one', state: 'complete'}, report: 'HTML'};
+
+test('per-category append reads all chunks, merges current edits and never saves or enables rules', async () => {
+    const f=fixture([queued,done,
+        {ok:true,candidates:{category:'search_agents',names:['Googlebot-Image'],scanned:500,total:502,next_offset:500}},
+        {ok:true,candidates:{category:'search_agents',names:['googlebot-image','PerplexityBot'],scanned:2,total:502,next_offset:null}}
+    ],{inventory:'agents'});
+    assert.ok(f.appendButtons.every(item=>item.disabled));
+    await f.submit();
+    f.nodes.search_agents.value='gOoGlEbOt-ImAgE\nMy unsaved rule';
+    await f.appendButtons[2].click();
+    assert.equal(f.nodes.search_agents.value,'gOoGlEbOt-ImAgE\nMy unsaved rule\nPerplexityBot');
+    assert.equal(f.nodes.ai_agents.value,'Existing custom agent');
+    assert.match(f.nodes['hdn-analyzed-search_agents'].textContent,/1 new agents appended; 1 already present/);
+    for (const request of f.requests.slice(2)) {
+        const fields=request.options.body.fields;
+        assert.equal(fields.get('action'),'agents_candidates');
+        assert.equal(fields.get('analysis_job'),'one');
+        assert.equal(fields.get('analysis_category'),'search_agents');
+        assert.equal(fields.get('token'),'csrf-token');
+        assert.equal(fields.has('policy'),false);
+    }
+    assert.deepEqual(f.requests.slice(2).map(r=>r.options.body.fields.get('export_offset')),['0','500']);
+    assert.ok(f.appendButtons.every(item=>!item.disabled));
+});
+
+test('failed or malformed candidate transfers leave every unsaved list untouched', async () => {
+    const bad=[{http:503,error:'Read failed'},
+        {ok:true,candidates:{category:'agents',names:['GPTBot'],scanned:1,total:501,next_offset:null}},
+        {ok:true,candidates:{category:'ai_agents',names:['Bad\nRule'],scanned:1,total:501,next_offset:null}},
+        {ok:true,candidates:{category:'ai_agents',names:[],scanned:0,total:501,next_offset:500}},
+        {ok:true,candidates:{category:'ai_agents',names:['ClaudeBot'],scanned:1,total:502,next_offset:null}}];
+    for (const failure of bad) {
+        const f=fixture([queued,done,
+            {ok:true,candidates:{category:'ai_agents',names:['GPTBot'],scanned:500,total:501,next_offset:500}},failure
+        ],{inventory:'agents'});
+        await f.submit(); await f.appendButtons[1].click();
+        assert.equal(f.nodes.ai_agents.value,'Existing custom agent');
+        assert.ok(f.appendButtons.every(item=>!item.disabled));
+        assert.doesNotMatch(f.nodes['hdn-analyzed-ai_agents'].textContent,/appended/);
+    }
+});
+
+test('empty category is a no-op and unavailable reports cannot append', async () => {
+    const f=fixture([queued,done,{ok:true,candidates:{category:'agents',names:[],scanned:0,total:0,next_offset:null}}],{inventory:'agents'});
+    await new Promise(resolve=>setImmediate(resolve));
+    await f.appendButtons[4].click(); assert.equal(f.requests.length,0);
+    await f.submit(); await f.appendButtons[4].click();
+    assert.equal(f.nodes.agents.value,'Existing custom agent');
+    assert.match(f.nodes['hdn-analyzed-agents'].textContent,/No recognized agents/);
+});
 
 test('named action input cannot clobber the URL; review POST retains CSRF and scope', async () => {
     const f = fixture([queued, done]); await f.submit();

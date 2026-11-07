@@ -29,6 +29,11 @@ declared names and is not identity verification.
 
 Each **User-Agents** box has its own enable switch and **Add suggested agents**
 button. The buttons append suggestions to unsaved text; Save & Apply is required.
+**Append analyzed agents** uses the whole completed analysis instead of the
+suggestion catalog. Only recognized names in that category are included. Other
+excludes unknown declarations and browser/application strings; these can still
+be selected individually in the analysis results. Existing entries and enable
+switches are preserved. A failed transfer leaves the lists unchanged.
 
 | List | Suggested names |
 | --- | --- |

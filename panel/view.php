@@ -58,7 +58,12 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="<?= $field ?>_enabled" <?= !array_key_exists($field . '_enabled', $policy) || $policy[$field . '_enabled'] ? 'checked' : '' ?>> Enable this list</label>
     <label class="form-label" for="<?= $field ?>"><?= $escape($category['title']) ?> blocklist</label>
     <textarea form="hdn-settings" class="form-control u-mb10" rows="6" id="<?= $field ?>" name="<?= $field ?>" spellcheck="false"><?= $escape(implode("\n", $policy[$field] ?? [])) ?></textarea>
+    <div class="hdn-inventory-actions">
     <button type="button" class="button button-secondary" data-hdn-preset="<?= $field ?>" data-hdn-agent-field="<?= $field ?>">Add suggested agents</button>
+    <button type="button" class="button button-secondary" data-hdn-append-analyzed="<?= $field ?>" aria-describedby="hdn-analyzed-<?= $field ?>" disabled>Append analyzed agents</button>
+    </div>
+    <p class="u-mt10" id="hdn-analyzed-<?= $field ?>" role="status">Uses the latest completed agent analysis, across all result pages.</p>
+    <?php if ($isOther): ?><p>Only recognized crawlers and fetch clients are included. Unknown agents and browser strings remain available for individual selection in the results.</p><?php endif; ?>
     </div></<?= $isOther ? 'details' : 'section' ?>>
     <?php endforeach; ?>
     </div>

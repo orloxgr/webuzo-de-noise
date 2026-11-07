@@ -14,13 +14,16 @@
         const output = document.getElementById(prefix + '-output');
         const storageKey = 'hdn-review:' + location.pathname + ':' + actionPrefix + ':' + (scanForm.dataset?.hdnContext || '');
         let job = null, active = false, generation = 0;
+        let completedJob = null, appending = false;
+        const appendButtons = actionPrefix === 'agents' ? [...document.querySelectorAll('[data-hdn-append-analyzed]')] : [];
+        const updateAppendButtons = () => appendButtons.forEach(item => { item.disabled = !completedJob || appending; });
         let restoreSelection = true;
         const selectionEdited = () => { restoreSelection = false; };
         scanForm.addEventListener('input', selectionEdited);
         scanForm.addEventListener('change', selectionEdited);
         try { job = sessionStorage.getItem(storageKey); } catch (_) { /* Storage is optional. */ }
         const remember = id => { job = id; try { sessionStorage.setItem(storageKey, id); } catch (_) {} };
-        const request = async (action, page = 1, initial = false, exportOffset = null, requestedJob = job) => {
+        const request = async (action, page = 1, initial = false, exportOffset = null, requestedJob = job, category = null) => {
             const body = initial ? new FormData(scanForm) : new FormData();
             body.set('action', action);
             body.set('token', scanForm.querySelector('input[name="token"]').value);
@@ -28,6 +31,7 @@
             if (requestedJob) body.set('analysis_job', requestedJob);
             body.set('analysis_page', page);
             if (exportOffset !== null) body.set('export_offset', exportOffset);
+            if (category !== null) body.set('analysis_category', category);
             // Named input "action" must never shadow the form's URL attribute.
             const response = await fetch(scanForm.getAttribute('action') || location.href, {
                 method: 'POST', body, credentials: 'same-origin', headers: {'X-HDN-Analysis': '1'}
@@ -57,6 +61,8 @@
             }
             if (current.id) remember(current.id);
             active = ['queued', 'running'].includes(current.state);
+            completedJob = current.state === 'complete' ? current.id : null;
+            updateAppendButtons();
             cancel.hidden = !active;
             if (value.report) {
                 const page = new DOMParser().parseFromString(value.report, 'text/html');
@@ -76,6 +82,8 @@
         };
         const observe = async (start = false) => {
             const turn = ++generation;
+            completedJob = null;
+            updateAppendButtons();
             button.disabled = true;
             try {
                 if (start) {
@@ -109,6 +117,53 @@
             button.disabled = false;
             button.textContent = active ? 'Resume review' : label;
         });
+        appendButtons.forEach(item => item.addEventListener('click', async () => {
+            const category = item.dataset.hdnAppendAnalyzed;
+            const allowed = ['tool_agents', 'ai_agents', 'search_agents', 'seo_agents', 'agents'];
+            if (!completedJob || appending || !allowed.includes(category)) return;
+            const sourceJob = completedJob;
+            const field = document.getElementById(category);
+            const status = document.getElementById('hdn-analyzed-' + category);
+            appending = true;
+            updateAppendButtons();
+            status.textContent = 'Reading analyzed agents…';
+            try {
+                const names = new Map();
+                let offset = 0, total = null;
+                do {
+                    const value = (await request('agents_candidates', 1, false, offset, sourceJob, category)).candidates;
+                    if (!value || value.category !== category || !Array.isArray(value.names) ||
+                        !Number.isSafeInteger(value.total) || value.total < 0 ||
+                        !Number.isSafeInteger(value.scanned) || value.scanned < 0 || value.scanned > 500 ||
+                        value.names.length > value.scanned || (total !== null && total !== value.total)) {
+                        throw new Error('The panel returned invalid agent candidates. Try again.');
+                    }
+                    total = value.total;
+                    const end = offset + value.scanned;
+                    if (end > total || (value.next_offset === null ? end !== total :
+                        value.next_offset !== end || end <= offset || end >= total)) {
+                        throw new Error('The agent report is incomplete. Try again.');
+                    }
+                    for (const name of value.names) {
+                        if (typeof name !== 'string' || !name || name !== name.trim() || /[^\x20-\x7e]/.test(name)) {
+                            throw new Error('The panel returned an invalid agent name.');
+                        }
+                        names.set(name.toLowerCase(), name);
+                    }
+                    offset = value.next_offset;
+                } while (offset !== null);
+                // Merge into the latest unsaved text only after every chunk succeeds.
+                const added = appendLines(field, [...names.values()], true);
+                status.textContent = names.size ?
+                    `${added} new agents appended; ${names.size - added} already present. Save & Apply to save your changes.` :
+                    'No recognized agents in this category were found in this analysis.';
+            } catch (error) {
+                status.textContent = error.message;
+            } finally {
+                appending = false;
+                updateAppendButtons();
+            }
+        }));
         output.addEventListener('click', async event => {
             const exportButton = actionPrefix === 'agents' ? event.target.closest('[data-hdn-export-agents]') : null;
             if (exportButton && job) {

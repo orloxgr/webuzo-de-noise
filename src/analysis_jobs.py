@@ -124,13 +124,13 @@ def report_database(path):
         connection.close()
 
 
-def export_agents(state, job, actor, offset=0):
+def agent_rows(state, job, actor, offset=0):
     """Read a bounded transfer chunk from one completed, immutable inventory."""
     if type(offset) is not int or offset < 0:
         raise ValueError('Invalid export offset')
     path = owned(state, job, actor, kind='agents')
     if read(path, 'status.json')['state'] != 'complete':
-        raise ValueError('Complete the agent analysis before exporting')
+        raise ValueError('Complete the agent analysis first')
     analysis = read(path, 'result.json')
     total = analysis['findings_total']
     if offset > total:
@@ -144,8 +144,31 @@ def export_agents(state, job, actor, offset=0):
     if not rows and offset < total:
         raise ValueError('The agent report is incomplete')
     end = offset + len(rows)
-    return dict(rows=[[row['value'], row['count']] for row in rows], total=total,
+    return dict(rows=rows, total=total,
                 next_offset=end if end < total else None)
+
+
+def export_agents(state, job, actor, offset=0):
+    chunk = agent_rows(state, job, actor, offset)
+    return {**chunk, 'rows': [[row['value'], row['count']] for row in chunk['rows']]}
+
+
+def agent_candidates(state, job, actor, category, offset=0):
+    """Only recognized literal names from this category, never arbitrary UAs."""
+    import agent_catalog
+    if not isinstance(category, str) or category not in agent_catalog.CATEGORIES:
+        raise ValueError('Invalid agent category')
+    chunk = agent_rows(state, job, actor, offset)
+    names = agent_catalog.CATEGORIES[category]['entries'] + agent_catalog.EXTRA.get(category, [])
+    known = {name.casefold(): name for name in names}
+    candidates = []
+    for row in chunk['rows']:
+        value = row.get('candidate')
+        if (row.get('category') == category and isinstance(value, str)
+                and value.casefold() in known):
+            candidates.append(known[value.casefold()])
+    return dict(category=category, names=list(dict.fromkeys(candidates)),
+                scanned=len(chunk['rows']), total=chunk['total'], next_offset=chunk['next_offset'])
 
 
 def status(state, job, actor, page=1, kind="scan", owner=None):

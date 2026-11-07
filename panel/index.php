@@ -120,9 +120,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach (['files', 'queries'] as $kind) {
                 if (is_array($submitted['probe_exceptions'][$kind])) $request['policy']['probe_exceptions'][$kind] = (object)$submitted['probe_exceptions'][$kind];
             }
-        } elseif ($request['action'] === 'agents_export') {
+        } elseif (in_array($request['action'], ['agents_export', 'agents_candidates'], true)) {
             $request['job'] = $_POST['analysis_job'] ?? '';
             $request['offset'] = filter_var($_POST['export_offset'] ?? 0, FILTER_VALIDATE_INT);
+            if ($request['action'] === 'agents_candidates') $request['category'] = $_POST['analysis_category'] ?? '';
         } elseif ($request['action'] === 'activity_start') {
             $request['minutes'] = filter_var($_POST['analysis_minutes'] ?? '', FILTER_VALIDATE_INT);
         } elseif (in_array($request['action'], ['log_scan', 'log_scan_start', 'agents_start', 'php_files_start'], true)) {
@@ -177,7 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $request['jobs'] = $_POST['cron_jobs'] ?? [];
             $request['restore'] = isset($_POST['restore_cron']);
         }
-        if (!in_array($request['action'], ['fail2ban_status', 'fail2ban_start', 'fail2ban_save', 'fail2ban_test', 'fail2ban_unban', 'fail2ban_install_preview', 'fail2ban_install_start', 'fail2ban_install_status', 'save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
+        if (!in_array($request['action'], ['fail2ban_status', 'fail2ban_start', 'fail2ban_save', 'fail2ban_test', 'fail2ban_unban', 'fail2ban_install_preview', 'fail2ban_install_start', 'fail2ban_install_status', 'save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'agents_candidates', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
             $error = 'Unsupported operation.';
         } else {
             $isReview = strpos($request['action'], 'fail2ban_') === 0 || strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0;

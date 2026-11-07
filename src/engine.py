@@ -26,7 +26,7 @@ import enumeration
 import log_analysis
 import analysis_jobs
 
-REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
+REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -364,6 +364,11 @@ def dispatch(request):
             return {'ok': True, 'job': job}
         if not admin or owner != request['actor']:
             raise PermissionError('Log analysis requires the administrator context')
+        if request['action'] == 'agents_candidates':
+            if set(request) - {'actor', 'owner', 'action', 'listing', 'job', 'offset', 'category'}:
+                raise ValueError('Only agent candidate selections can be submitted')
+            return {'ok': True, 'candidates': analysis_jobs.agent_candidates(STATE, request.get('job'),
+                request['actor'], request.get('category'), request.get('offset', 0))}
         if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page', 'offset'}:
             raise ValueError('Only log-analysis selections can be submitted')
         for kind in ('agents', 'php_files'):

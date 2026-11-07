@@ -262,6 +262,70 @@ class Inventory(unittest.TestCase):
         job, _ = self.export_job()
         self.assertEqual(analysis_jobs.export_agents(self.root, job, 'root'), dict(rows=[], total=0, next_offset=None))
 
+    def test_category_candidates_scan_all_chunks_and_exclude_unknown_other_values(self):
+        agents = ['Unknown-' + str(n) for n in range(1005)] + [
+            'Mozilla/5.0 Chrome/99.0', 'WordPress/6.8', 'curl/8.7.1',
+            'GPTBot/1.0', 'GoogleOther', 'facebookexternalhit/1.1',
+            'Baiduspider-render/2.0', 'Googlebot-Image/1.0', 'CensysInspect/1.1', 'AhrefsBot/1.0']
+        (self.logs / 'one.test.log').write_text(''.join(self.line(agent=name) for name in agents))
+        job, directory = self.export_job()
+        before = hashlib.sha256((directory / 'report.sqlite').read_bytes()).hexdigest()
+        expected = {'tool_agents': ['CensysInspect'], 'ai_agents': ['GPTBot'],
+            'search_agents': ['Baiduspider-render', 'Googlebot-Image'],
+            'seo_agents': ['AhrefsBot'], 'agents': ['GoogleOther', 'facebookexternalhit']}
+        with patch.object(log_analysis, 'scan') as scan:
+            for category, names in expected.items():
+                offset, found, scanned, chunks = 0, [], 0, 0
+                while offset is not None:
+                    value = analysis_jobs.agent_candidates(self.root, job, 'root', category, offset)
+                    self.assertEqual(value['category'], category)
+                    self.assertEqual(value['total'], len(agents))
+                    self.assertLessEqual(value['scanned'], 500)
+                    found += value['names']; scanned += value['scanned']; chunks += 1
+                    offset = value['next_offset']
+                self.assertCountEqual(found, names)
+                self.assertEqual(scanned, len(agents))
+                self.assertEqual(chunks, 3)
+        scan.assert_not_called()
+        self.assertEqual(hashlib.sha256((directory / 'report.sqlite').read_bytes()).hexdigest(), before)
+        self.assertFalse((self.root / 'policy.json').exists())
+
+    def test_candidates_reject_invalid_scope_category_job_state_and_database(self):
+        job, directory = self.export_job()
+        for category in ('invalid', '../agents', None, [], 'AI_AGENTS'):
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                analysis_jobs.agent_candidates(self.root, job, 'root', category)
+        with self.assertRaises(PermissionError):
+            analysis_jobs.agent_candidates(self.root, job, 'alice', 'agents')
+        other, _ = self.export_job(kind='php_files')
+        with self.assertRaises(PermissionError):
+            analysis_jobs.agent_candidates(self.root, other, 'root', 'agents')
+        for offset in (-1, True, '0', 1):
+            with self.subTest(offset=offset), self.assertRaises(ValueError):
+                analysis_jobs.agent_candidates(self.root, job, 'root', 'agents', offset)
+        analysis_jobs.write(directory, 'status.json', dict(state='running'))
+        with self.assertRaises(ValueError):
+            analysis_jobs.agent_candidates(self.root, job, 'root', 'agents')
+        analysis_jobs.write(directory, 'status.json', dict(state='complete'))
+        (directory / 'report.sqlite').chmod(0o644)
+        with self.assertRaises(ValueError):
+            analysis_jobs.agent_candidates(self.root, job, 'root', 'agents')
+
+    def test_candidates_endpoint_requires_admin_scope_and_accepts_no_policy_changes(self):
+        request = dict(actor='root', action='agents_candidates', job='a' * 32, category='ai_agents', offset=0)
+        with patch.object(engine.webuzo, 'users', return_value={'alice': dict(suspended=False)}):
+            for fields in (dict(actor='alice'), dict(owner='alice')):
+                with self.assertRaises(PermissionError): engine.dispatch({**request, **fields})
+        for extra in ('policy', 'target', 'minutes'):
+            with self.subTest(extra=extra), self.assertRaises(ValueError):
+                engine.dispatch({**request, extra: {}})
+        with patch.object(engine, 'collect') as collect, patch.object(analysis_jobs, 'agent_candidates',
+                return_value=dict(category='ai_agents', names=['GPTBot'], scanned=1, total=1, next_offset=None)) as candidates:
+            result = engine.dispatch(request)
+        self.assertTrue(result['ok'])
+        collect.assert_not_called()
+        candidates.assert_called_once_with(engine.STATE, 'a' * 32, 'root', 'ai_agents', 0)
+
     def test_export_endpoint_requires_root_scope_and_never_discovers_or_changes_sites(self):
         with patch.object(engine.webuzo, 'users', return_value={'alice': dict(suspended=False)}):
             with self.assertRaises(PermissionError):

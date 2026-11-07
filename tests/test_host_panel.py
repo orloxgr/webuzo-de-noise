@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 import host_protection as host
+import agent_catalog
 from policy import DEFAULT
 from test_ban_panel import Forms
 
@@ -20,9 +21,10 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('php'), 'Native PHP rendering')
 class PanelTests(unittest.TestCase):
-    def render(self, admin=True, ajax=False, install_state=None, csf=False, services_enabled=False):
+    def render(self, admin=True, ajax=False, install_state=None, csf=False, services_enabled=False,
+               ajax_action='fail2ban_status', token='fixture-token'):
         data = dict(ok=True, policy=copy.deepcopy(DEFAULT), sites=[], bans={}, history={'days': 30},
-                    maintenance={}, presets={}, wordpress={}, cron={},
+                    maintenance={}, presets={'agent_categories': agent_catalog.CATEGORIES}, wordpress={}, cron={},
                     fail2ban=dict(installed=True, loaded=True, running=True, settings=copy.deepcopy(host.DEFAULT),
                                   services={}, active_jails=['sshd'], conflicts=[]))
         for key, spec in host.SERVICES.items():
@@ -43,13 +45,13 @@ define('SOFTACULOUS',true);
 $install=$argv[1];$fixture=json_decode(file_get_contents($argv[2]),true);
 $isAdmin=$argv[3]==='1';$actor=$isAdmin?'root':'alice';$owner=$actor;$headerOwner=$owner;$csrf='fixture-token';$read_only=false;
 $meta=['version'=>'test'];$escape=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-$bridge=static fn($request)=>$fixture;
+$bridge=static fn($request)=>$request['action']==='agents_candidates'?['ok'=>true,'received'=>$request]:$fixture;
 $_SERVER['REQUEST_METHOD']=$argv[4]==='1'?'POST':'GET';$_GET=[];$_POST=[];
-if($argv[4]==='1'){$_SERVER['HTTP_X_HDN_ANALYSIS']='1';$_POST=['action'=>'fail2ban_status','token'=>$csrf,'tab'=>'fail2ban'];}
+if($argv[4]==='1'){$_SERVER['HTTP_X_HDN_ANALYSIS']='1';$_POST=['action'=>$argv[5],'token'=>$argv[6],'tab'=>'fail2ban','analysis_job'=>str_repeat('a',32),'export_offset'=>'500','analysis_category'=>'search_agents'];}
 require $install.'/panel/index.php';
 ''', encoding='utf-8')
             result = subprocess.run(['php', str(path / 'render.php'), str(ROOT), str(path / 'data.json'),
-                                     '1' if admin else '0', '1' if ajax else '0'],
+                                     '1' if admin else '0', '1' if ajax else '0', ajax_action, token],
                                     capture_output=True, text=True, encoding='utf-8')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stderr, '')
@@ -84,6 +86,21 @@ require $install.'/panel/index.php';
     def test_account_cannot_request_admin_ajax_even_when_post_is_forged(self):
         result = json.loads(self.render(admin=False, ajax=True))
         self.assertFalse(result['ok']); self.assertNotIn('report', result)
+
+    def test_analyzed_append_has_five_buttons_and_authenticated_read_only_transfer(self):
+        body = self.render()
+        self.assertEqual(body.count('>Append analyzed agents</button>'), 5)
+        for category in agent_catalog.CATEGORIES:
+            self.assertIn('data-hdn-append-analyzed="' + category + '"', body)
+        for admin, token in ((False, 'fixture-token'), (True, 'wrong')):
+            result = json.loads(self.render(admin=admin, ajax=True, ajax_action='agents_candidates', token=token))
+            self.assertFalse(result['ok']); self.assertNotIn('received', result)
+        result = json.loads(self.render(ajax=True, ajax_action='agents_candidates'))
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['received']['category'], 'search_agents')
+        self.assertEqual(result['received']['offset'], 500)
+        self.assertEqual(result['received']['job'], 'a' * 32)
+        self.assertNotIn('policy', result['received'])
 
     def test_partial_package_is_shown_as_installing_and_not_as_a_broken_service(self):
         for stage in ('queued', 'running'):
