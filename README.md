@@ -86,8 +86,13 @@ left under their existing management; De-Noise does not create duplicates.
 When CSF or LFD is detected, De-Noise blocks enabling its SSH, mail and FTP
 protections in both the panel and backend. Existing De-Noise service jails can
 still be disabled; no existing jail or CSF/LFD setting is changed automatically.
-WordPress login protection remains available. Other active BFD protection is
-reported for review. After changing service ports
+WordPress login protection remains available. Automatic Fail2ban package installation is blocked while
+CSF/LFD is installed because distribution package scripts may activate an SSH
+jail. Install and configure Fail2ban manually for WordPress-only use in that case.
+Starting an existing Fail2ban service through De-Noise checks the enabled jails;
+with CSF/LFD installed, only an empty or De-Noise WordPress-only configuration
+is accepted. Existing jails and configuration files are never disabled or edited
+by these checks. Other active BFD protection is reported for review. After changing service ports
 or logging elsewhere, refresh status and Save & Apply again to update the owned
 jails.
 

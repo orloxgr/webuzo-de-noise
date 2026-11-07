@@ -22,10 +22,10 @@ ROOT = Path(__file__).resolve().parents[1]
 @unittest.skipUnless(shutil.which('php'), 'Native PHP rendering')
 class PanelTests(unittest.TestCase):
     def render(self, admin=True, ajax=False, install_state=None, csf=False, services_enabled=False,
-               ajax_action='fail2ban_status', token='fixture-token'):
+               ajax_action='fail2ban_status', token='fixture-token', installed=True):
         data = dict(ok=True, policy=copy.deepcopy(DEFAULT), sites=[], bans={}, history={'days': 30},
                     maintenance={}, presets={'agent_categories': agent_catalog.CATEGORIES}, wordpress={}, cron={},
-                    fail2ban=dict(installed=True, loaded=True, running=True, settings=copy.deepcopy(host.DEFAULT),
+                    fail2ban=dict(installed=installed, loaded=True, running=True, settings=copy.deepcopy(host.DEFAULT),
                                   services={}, active_jails=['sshd'], conflicts=[]))
         for key, spec in host.SERVICES.items():
             data['fail2ban']['services'][key] = dict(title=spec['title'], ready=True, ports=[2222],
@@ -136,3 +136,9 @@ require $install.'/panel/index.php';
             self.assertIn('WordPress login protection remains available.', body)
             self.assertLess(body.index('WordPress login protection'), body.index('<h2 class="u-mb20">Fail2ban</h2>'))
             if enabled: self.assertIn('Uncheck all enabled service protections', body)
+
+    def test_csf_blocks_package_preview_instead_of_starting_the_distribution_ssh_jail(self):
+        body = json.loads(self.render(ajax=True, csf=True, installed=False))['report']
+        self.assertIn('Automatic installation is blocked while CSF/LFD is installed', body)
+        self.assertIn('disabled>Preview Fail2ban installation</button>', body)
+        self.assertNotIn('value="fail2ban_install_start"', body)

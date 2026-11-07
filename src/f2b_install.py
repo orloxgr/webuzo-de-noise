@@ -87,7 +87,13 @@ def candidate(run):
                 'install', 'fail2ban=' + version])
 
 
+def check_installation_allowed():
+    if host_protection.service_blockers():
+        raise ValueError('CSF/LFD detected: automatic Fail2ban installation is blocked because package scripts may enable the distribution SSH jail. For WordPress-only protection, install and configure Fail2ban manually, then refresh status. No existing protection was changed.')
+
+
 def preview(state, run):
+    check_installation_allowed()
     if host_protection.binary('fail2ban-client'):
         raise ValueError('Fail2ban is already installed. Refresh its status instead.')
     plan = candidate(run)
@@ -108,6 +114,7 @@ def start(state, token, run):
     current = status(state)
     if current['state'] in ('queued', 'running'):
         return current
+    check_installation_allowed()
     plan = read(state, PLAN)
     if (not isinstance(token, str) or not re.fullmatch('[0-9a-f]{64}', token) or not plan or
             plan['token'] != token or time.time() - plan['created'] > 3600):
@@ -142,10 +149,12 @@ def worker(state, identity, run):
         storage.replace(Path(state) / JOB, storage.json_bytes(job), 0o600)
     report(state='running')
     try:
+        check_installation_allowed()
         fresh = candidate(run)
         if any(fresh[name] != plan[name] for name in ('os', 'version', 'command', 'simulation')):
             raise ValueError('The package plan changed before installation. Review it again.')
         report(message='Installing Fail2ban packages. Service checks will follow when APT finishes.')
+        check_installation_allowed()
         run(*fresh['command'], timeout=900)
         report(message='Packages installed. Checking Fail2ban configuration.')
         client = host_protection.client()
@@ -154,6 +163,7 @@ def worker(state, identity, run):
         if not systemctl:
             raise ValueError('Systemd is required to start the Fail2ban service')
         report(message='Starting Fail2ban and checking service readiness.')
+        host_protection.check_service_start(run)
         run(systemctl, 'enable', '--now', 'fail2ban')
         for attempt in range(10):
             try:

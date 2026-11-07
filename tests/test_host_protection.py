@@ -19,6 +19,42 @@ from test_engine import fixture_read, fixture_replace
 
 
 class InputTests(unittest.TestCase):
+    def test_csf_start_guard_inspects_only_and_rejects_enabled_non_wordpress_jails(self):
+        for jail in ('sshd', 'dovecot', 'exim', 'pure-ftpd', 'custom-auth'):
+            run = Mock(return_value="['set', 'loglevel', 'INFO']\n" + repr(['add', jail, 'systemd']))
+            with self.subTest(jail=jail), patch.object(host, 'service_blockers', return_value=['CSF']), \
+                    patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'):
+                with self.assertRaisesRegex(ValueError, 'service start is blocked'):
+                    host.check_service_start(run)
+            run.assert_called_once_with('/usr/bin/fail2ban-client', '-d')
+
+    def test_csf_start_guard_accepts_empty_or_wordpress_only_configurations(self):
+        for dump in ("['set', 'loglevel', 'INFO']", "['set', 'loglevel', 'INFO']\n['add', 'webuzo-denoise-wordpress', 'auto']\n['start', 'webuzo-denoise-wordpress']"):
+            run = Mock(return_value=dump)
+            with self.subTest(dump=dump), patch.object(host, 'service_blockers', return_value=['LFD']), \
+                    patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'):
+                host.check_service_start(run)
+            run.assert_called_once_with('/usr/bin/fail2ban-client', '-d')
+        run = Mock()
+        with patch.object(host, 'service_blockers', return_value=[]): host.check_service_start(run)
+        run.assert_not_called()
+
+    def test_csf_start_guard_fails_closed_for_unknown_or_malformed_dump(self):
+        for dump in ('OK', '', '[invalid]', "['add']", "['start', 'sshd']", "[__import__('os').getcwd()]", '[]',
+                     "['set', 'loglevel', 'INFO']\n['unknown-command']", "['set', 'loglevel', 'INFO']\n('add', 'sshd')"):
+            with self.subTest(dump=dump), patch.object(host, 'service_blockers', return_value=['CSF']), \
+                    patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'):
+                with self.assertRaises(ValueError): host.check_service_start(Mock(return_value=dump))
+
+    def test_authenticated_start_checks_csf_before_any_service_start_command(self):
+        with patch.object(f2b_install, 'status', return_value={'state':'idle'}), \
+                patch.object(host, 'check_service_start', side_effect=ValueError('CSF blocked')) as check, \
+                patch.object(engine, 'run') as run:
+            with self.assertRaisesRegex(ValueError, 'CSF blocked'):
+                engine.dispatch(dict(actor='root', action='fail2ban_start'))
+        check.assert_called_once_with(run)
+        run.assert_not_called()
+
     def test_csf_and_lfd_installations_are_detected_even_without_a_running_service(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp); config = root / 'csf.conf'; unit = root / 'lfd.service'

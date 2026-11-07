@@ -31,16 +31,17 @@ $activationBlocked = !empty($f2b['service_activation_blocked']);
 <?php elseif (empty($f2b['installed'])): ?>
 <p class="u-mb20">Install Fail2ban from the authenticated Ubuntu or Debian repositories configured on this server. De-Noise does not add repositories. Other distributions require manual installation of their Fail2ban package.</p>
 <p class="u-mb20">Installation adds Fail2ban and its required packages and enables its system service. Distribution defaults may already enable an SSH jail. Additional De-Noise protections stay off until you select and save them.</p>
-<form method="post"><?php $fields('fail2ban_install_preview'); ?><button class="button button-secondary u-mb20" type="submit">Preview Fail2ban installation</button></form>
+<?php if ($activationBlocked): ?><p class="u-mb20">Automatic installation is blocked while CSF/LFD is installed because package scripts may enable the distribution SSH jail. For WordPress-only protection, install and configure Fail2ban manually, then refresh status.</p><?php endif; ?>
+<form method="post"><?php $fields('fail2ban_install_preview'); ?><button class="button button-secondary u-mb20" type="submit" <?= $activationBlocked ? 'disabled' : '' ?>>Preview Fail2ban installation</button></form>
 <?php if ($installPlan): ?>
 <h3 class="u-mb10">Installation preview</h3>
 <p class="u-mb10"><?= $escape($installPlan['os']) ?> · Fail2ban <?= $escape($installPlan['version']) ?></p>
 <p class="u-mb10">The following package changes are proposed. No packages will be removed.</p>
 <pre class="hdn-diagnostic u-mb20"><?= $escape($installPlan['changes']) ?></pre>
-<form method="post"><?php $fields('fail2ban_install_start'); ?><input type="hidden" name="plan_token" value="<?= $escape($installPlan['token']) ?>"><button class="button u-mb20" type="submit">Install Fail2ban &amp; start service</button></form>
+<form method="post"><?php $fields('fail2ban_install_start'); ?><input type="hidden" name="plan_token" value="<?= $escape($installPlan['token']) ?>"><button class="button u-mb20" type="submit" <?= $activationBlocked ? 'disabled' : '' ?>>Install Fail2ban &amp; start service</button></form>
 <?php endif; ?>
 <?php elseif (!empty($f2b['loaded']) && empty($f2b['running'])): ?>
-<form method="post"><?php $fields('fail2ban_start'); ?><p class="u-mb10">Starting the service activates its existing enabled jails. Its configuration is checked first.</p><button class="button u-mb20" type="submit">Enable &amp; start existing Fail2ban service</button></form>
+<form method="post"><?php $fields('fail2ban_start'); ?><p class="u-mb10">Starting the service activates its existing enabled jails. Its configuration is checked first. With CSF/LFD installed, only a configuration with no enabled jails or only the De-Noise WordPress jail can be started here.</p><button class="button u-mb20" type="submit">Enable &amp; start existing Fail2ban service</button></form>
 <?php endif; ?>
 <?php if (in_array($installJob['state'], ['queued', 'running', 'failed', 'complete'], true)): ?>
 <div id="hdn-install-progress" class="alert <?= $installJob['state'] === 'failed' ? 'alert-danger' : 'alert-info' ?> u-mb20" role="status" data-state="<?= $escape($installJob['state']) ?>"><?= $escape($installJob['error'] ?? $installJob['message'] ?? 'Fail2ban installation is in progress. You can leave this page and return to check its status.') ?></div>

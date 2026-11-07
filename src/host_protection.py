@@ -1,5 +1,6 @@
 """Opt-in native Fail2ban jails for detected server authentication services."""
 import base64
+import ast
 import copy
 import importlib.util
 import ipaddress
@@ -78,6 +79,28 @@ def activation_error(blockers):
             '. SSH, mail and FTP protection cannot be enabled in De-Noise. '
             'WordPress login protection remains available. '
             'Existing jails are not changed automatically.')
+
+
+def check_service_start(run):
+    """With CSF/LFD, only a WordPress-only (or empty) jail setup may start."""
+    if not service_blockers():
+        return
+    parsed = False
+    for line in run(client(), '-d').splitlines():
+        if not line.strip():
+            continue
+        try:
+            command = ast.literal_eval(line)
+        except (ValueError, SyntaxError) as error:
+            raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked while CSF/LFD is installed.') from error
+        if (not isinstance(command, list) or not command or not isinstance(command[0], str)
+                or command[0] not in ('set', 'multi-set', 'add', 'start')):
+            raise ValueError('Invalid Fail2ban configuration dump; service start blocked.')
+        parsed = True
+        if command[0] in ('add', 'start') and (len(command) < 2 or command[1] != wordpress.JAIL):
+            raise ValueError('CSF/LFD detected: service start is blocked because enabled jails include protection other than the De-Noise WordPress jail. Review the existing Fail2ban configuration first. No jails were changed.')
+    if not parsed:
+        raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked while CSF/LFD is installed.')
 
 
 def jail(key):

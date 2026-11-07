@@ -344,6 +344,7 @@ def dispatch(request):
         elif action == 'fail2ban_unban':
             host_protection.unban(STATE, request.get('service'), request.get('ips'), run)
         elif action == 'fail2ban_start':
+            host_protection.check_service_start(run)
             run(host_protection.client(), '-t')
             run(host_protection.binary('systemctl') or '/usr/bin/systemctl', 'enable', '--now', 'fail2ban')
         return {'ok': True, 'fail2ban': host_protection.snapshot(STATE, run, live=True),
