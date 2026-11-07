@@ -66,6 +66,30 @@ class InputTests(unittest.TestCase):
         self.assertNotIn('hdn_domain_', text); self.assertNotIn('hdn_local_', text)
         self.assertIn('global-ban', text); self.assertIn('hdn_agent', text)
 
+    def test_service_status_does_not_query_partially_unpacked_fail2ban(self):
+        for stage in ('queued', 'running'):
+            with self.subTest(stage=stage), \
+                    patch.object(f2b_install, 'status', return_value={'state': stage}), \
+                    patch.object(host, 'binary', return_value='/usr/bin/fail2ban-client'), \
+                    patch.object(host, 'settings', return_value=copy.deepcopy(host.DEFAULT)), \
+                    patch.object(engine.wordpress, 'snapshot', return_value={}), \
+                    patch.object(engine, 'run') as run:
+                result = engine.dispatch(dict(actor='root', owner='root', action='fail2ban_status'))
+                self.assertEqual(result['install_job']['state'], stage)
+                self.assertTrue(result['fail2ban']['installed'])
+                self.assertFalse(result['fail2ban']['loaded'])
+                self.assertNotIn('error', result['fail2ban'])
+                run.assert_not_called()
+
+    def test_service_status_resumes_live_checks_after_installation_finishes(self):
+        for stage in ('idle', 'complete', 'failed'):
+            with self.subTest(stage=stage), \
+                    patch.object(f2b_install, 'status', return_value={'state': stage}), \
+                    patch.object(host, 'snapshot', return_value={}) as snapshot, \
+                    patch.object(engine.wordpress, 'snapshot', return_value={}):
+                engine.dispatch(dict(actor='root', owner='root', action='fail2ban_status'))
+                snapshot.assert_called_once_with(engine.STATE, engine.run, live=True)
+
 
 class TransactionTests(unittest.TestCase):
     def setUp(self):

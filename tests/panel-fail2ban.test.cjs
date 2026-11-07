@@ -5,20 +5,21 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../panel/fail2ban.js'), 'utf8');
 
-function fixture(replies, installation = null) {
+function fixture(replies, installation = null, initialStatus = null) {
     const handlers = {}, requests = [], errors = [];
     let replaced = false;
     const unchangedRule = {value:'unsaved crawler rule'};
     const form = action => ({id:action === 'fail2ban_status' ? 'hdn-fail2ban-refresh' : 'hdn-install-poll',
         action:{toString:()=> '[object HTMLInputElement]'}, fields:{action,token:'csrf-test',tab:'fail2ban'},
-        getAttribute:()=>null, querySelector:()=>({disabled:false}), before:node=>errors.push(node)});
+        getAttribute:()=>null, querySelector:()=>({disabled:false}), before:node=>errors.push(node),
+        requestSubmit(){handlers.submit({target:this,preventDefault(){}});}});
     const refreshForm = form('fail2ban_status'), pollForm = form('fail2ban_install_status');
     const output = installation && {dataset:{state:installation},textContent:''};
     const nodes = {'hdn-fail2ban-refresh':refreshForm, 'hdn-install-poll':installation ? pollForm : null,
-        'hdn-install-progress':output, 'hdn-fail2ban-status':{dataset:{loaded:'true'}},
+        'hdn-install-progress':output, 'hdn-fail2ban-status':{dataset:initialStatus || {loaded:'true'}},
         'hdn-panel-fail2ban':{replaceChildren:()=>{replaced = true;}}, 'rule':unchangedRule};
     vm.runInNewContext(source, {
-        document:{getElementById:id=>nodes[id],querySelector:()=>null,addEventListener:(event,fn)=>{handlers[event]=fn;},
+        document:{getElementById:id=>nodes[id],querySelector:()=>initialStatus && {getAttribute:()=>'true'},addEventListener:(event,fn)=>{handlers[event]=fn;},
             createElement:()=>({setAttribute(){}}),importNode:node=>node,contains:()=>true},
         FormData:class {constructor(form){this.fields = new Map(Object.entries(form.fields));}},
         location:{href:'https://panel.example.test/index.php?act=webuzo-de-noise'},
@@ -72,4 +73,20 @@ test('a failed package job stops polling and shows its actual diagnostic',async(
 
 test('viewing a page with no installation job does not install or start anything',async()=>{
     const f = fixture([]);await f.flush();assert.equal(f.requests.length,0);
+});
+
+test('opening the Fail2ban tab during unpack polls installation without checking the partial service',async()=>{
+    const f = fixture([{ok:true,install_job:{state:'running'}},
+        {ok:true,install_job:{state:'failed',error:'Package failure'}}], 'running', {loaded:'false',installing:'true'});
+    await f.flush();
+    assert.deepEqual(f.requests.map(r=>r.options.body.fields.get('action')),
+        ['fail2ban_install_status','fail2ban_install_status']);
+    assert.equal(f.replaced(),false);
+});
+
+test('opening the Fail2ban tab outside installation still requests live service status',async()=>{
+    const f = fixture([{ok:true,report:'<p>service status</p>'}], null, {loaded:'false',installing:'false'});
+    await f.flush();
+    assert.deepEqual(f.requests.map(r=>r.options.body.fields.get('action')), ['fail2ban_status']);
+    assert.equal(f.replaced(),true);
 });

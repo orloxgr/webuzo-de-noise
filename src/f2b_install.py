@@ -145,12 +145,15 @@ def worker(state, identity, run):
         fresh = candidate(run)
         if any(fresh[name] != plan[name] for name in ('os', 'version', 'command', 'simulation')):
             raise ValueError('The package plan changed before installation. Review it again.')
+        report(message='Installing Fail2ban packages. Service checks will follow when APT finishes.')
         run(*fresh['command'], timeout=900)
+        report(message='Packages installed. Checking Fail2ban configuration.')
         client = host_protection.client()
         run(client, '-t')
         systemctl = host_protection.binary('systemctl')
         if not systemctl:
             raise ValueError('Systemd is required to start the Fail2ban service')
+        report(message='Starting Fail2ban and checking service readiness.')
         run(systemctl, 'enable', '--now', 'fail2ban')
         for attempt in range(10):
             try:

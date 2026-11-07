@@ -76,7 +76,8 @@
     });
     poll();
     const tab = document.querySelector('[data-hdn-tab="fail2ban"]');
-    if (tab?.getAttribute('aria-selected') === 'true' && document.getElementById('hdn-fail2ban-status')?.dataset.loaded === 'false') {
+    const status = document.getElementById('hdn-fail2ban-status');
+    if (tab?.getAttribute('aria-selected') === 'true' && status?.dataset.loaded === 'false' && status.dataset.installing !== 'true') {
         document.getElementById('hdn-fail2ban-refresh')?.requestSubmit();
     }
 })();

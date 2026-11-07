@@ -321,6 +321,12 @@ def dispatch(request):
             raise ValueError('Unsupported Fail2ban operation or parameters')
         if action == 'fail2ban_install_status':
             return {'ok': True, 'install_job': f2b_install.status(STATE)}
+        installation = f2b_install.status(STATE)
+        if action == 'fail2ban_status' and installation['state'] in ('queued', 'running'):
+            # APT exposes the executable before its conffiles and daemon are ready.
+            # Do not query Fail2ban halfway through the package transaction.
+            return {'ok': True, 'fail2ban': host_protection.snapshot(STATE, run),
+                    'install_job': installation, 'wordpress': wordpress.snapshot(STATE, run)}
         if action not in ('fail2ban_status', 'fail2ban_install_start') and f2b_install.status(STATE)['state'] in ('queued', 'running'):
             raise ValueError('Wait for the Fail2ban installation to finish before changing authentication protection')
         extra = {}

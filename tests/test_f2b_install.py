@@ -123,3 +123,24 @@ class PackageTests(unittest.TestCase):
         self.assertIn(('/usr/bin/fail2ban-client', '-t'), calls)
         self.assertIn(('/usr/bin/systemctl', 'enable', '--now', 'fail2ban'), calls)
         self.assertFalse((self.state / installer.PLAN).exists())
+
+    def test_progress_tracks_package_configuration_and_service_phases(self):
+        plan = installer.preview(self.state, self.run)
+        job = dict(id='b' * 32, state='queued', created=plan['created'], version=plan['version'])
+        (self.state / installer.JOB).write_text(json.dumps(job))
+        phases = []
+        def command(*argv, **kwargs):
+            if '-y' in argv or argv[1:] in [('-t',), ('enable', '--now', 'fail2ban')]:
+                current = installer.status(self.state)
+                self.assertEqual(current['state'], 'running')
+                phases.append(current['message'])
+            return self.command(*argv, **kwargs)
+        self.run.side_effect = command
+        with patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'), \
+                patch.object(host, 'active_jails', return_value=['sshd']):
+            installer.worker(self.state, job['id'], self.run)
+        self.assertEqual(phases, [
+            'Installing Fail2ban packages. Service checks will follow when APT finishes.',
+            'Packages installed. Checking Fail2ban configuration.',
+            'Starting Fail2ban and checking service readiness.'])
+        self.assertEqual(installer.status(self.state)['state'], 'complete')

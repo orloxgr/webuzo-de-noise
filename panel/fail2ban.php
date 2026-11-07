@@ -4,15 +4,22 @@ $f2b = $data['fail2ban'] ?? [];
 $f2bRules = $f2b['settings'] ?? [];
 $installJob = $data['install_job'] ?? ['state' => 'idle'];
 $installPlan = $data['install_plan'] ?? null;
+$installing = in_array($installJob['state'], ['queued', 'running'], true);
 ?>
 <h2 class="u-mb20">Fail2ban</h2>
 <p class="u-mb20">Protect server services from repeated failed logins. These settings work independently of website Observe / Enforce modes. Each ban affects only the protected service's listed TCP ports.</p>
-<div id="hdn-fail2ban-status" data-loaded="<?= !empty($f2b['loaded']) ? 'true' : 'false' ?>">
+<div id="hdn-fail2ban-status" data-loaded="<?= !empty($f2b['loaded']) ? 'true' : 'false' ?>" data-installing="<?= $installing ? 'true' : 'false' ?>">
+<?php if ($installing): ?>
+<p class="u-mb10"><strong>Installation:</strong> In progress · <strong>Service:</strong> Waiting for installation to finish</p>
+<?php else: ?>
 <p class="u-mb10"><strong>Installation:</strong> <?= !empty($f2b['installed']) ? 'Installed' : 'Not installed' ?>
 <?php if (!empty($f2b['loaded']) && !empty($f2b['installed'])): ?> · <strong>Service:</strong> <?= !empty($f2b['running']) ? 'Running' : 'Not available' ?><?php endif; ?></p>
 <?php if (!empty($f2b['error'])): ?><div class="alert alert-danger u-mb20"><pre class="hdn-diagnostic"><?= $escape($f2b['error']) ?></pre></div><?php endif; ?>
+<?php endif; ?>
 <form method="post" id="hdn-fail2ban-refresh"><?php $fields('fail2ban_status'); ?><button class="button button-secondary u-mb20" type="submit">Refresh service status</button></form>
-<?php if (empty($f2b['installed'])): ?>
+<?php if ($installing): ?>
+<p class="u-mb20">Package installation and service checks are in progress. Service status will refresh automatically when installation finishes.</p>
+<?php elseif (empty($f2b['installed'])): ?>
 <p class="u-mb20">Install Fail2ban from the authenticated Ubuntu or Debian repositories configured on this server. De-Noise does not add repositories. Other distributions require manual installation of their Fail2ban package.</p>
 <p class="u-mb20">Installation adds Fail2ban and its required packages and enables its system service. Distribution defaults may already enable an SSH jail. Additional De-Noise protections stay off until you select and save them.</p>
 <form method="post"><?php $fields('fail2ban_install_preview'); ?><button class="button button-secondary u-mb20" type="submit">Preview Fail2ban installation</button></form>
@@ -32,7 +39,7 @@ $installPlan = $data['install_plan'] ?? null;
 <?php endif; ?>
 <?php if (!empty($f2b['conflicts'])): ?><div class="alert alert-warning u-mb20">Other protection is active: <?= $escape(implode(', ', $f2b['conflicts'])) ?>. Review its authentication protections before adding another jail for the same service. De-Noise leaves these tools enabled and unchanged.</div><?php endif; ?>
 <?php if (!empty($f2b['active_jails'])): ?><p class="u-mb20"><strong>Existing active jails:</strong> <?= $escape(implode(', ', $f2b['active_jails'])) ?>. Jails created outside De-Noise are managed separately.</p><?php endif; ?>
-<?php if (!empty($f2b['services'])): ?>
+<?php if (!$installing && !empty($f2b['services'])): ?>
 <form method="post" id="hdn-services-settings"><?php $fields('fail2ban_save'); ?></form>
 <div class="hdn-agent-grid">
 <?php foreach ($f2b['services'] as $service => $serviceInfo): $rule = $f2bRules[$service]; $existing = $serviceInfo['existing'] ?? []; ?>
@@ -71,6 +78,8 @@ $installPlan = $data['install_plan'] ?? null;
 <?php endif; ?>
 </div>
 <details class="box-collapse u-mt20"><summary class="box-collapse-header">WordPress login protection</summary><div class="box-collapse-content">
+<?php if (!$installing): ?>
 <?php if (!empty($f2b['installed'])): require $install . '/panel/wordpress.php'; else: ?><p>Install Fail2ban first. WordPress login protection also requires the WP fail2ban plugin to be installed manually in each WordPress site you want to protect.</p><?php endif; ?>
+<?php endif; ?>
 </div></details>
-<?php unset($f2b, $f2bRules, $installJob, $installPlan); ?>
+<?php unset($f2b, $f2bRules, $installJob, $installPlan, $installing); ?>

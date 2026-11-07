@@ -28,7 +28,7 @@ protect SSH, mailbox authentication, SMTP authentication and FTP on their detect
 
 ## Install
 
-1. Download `webuzo-de-noise-0.3.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.3.1.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.

@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('php'), 'Native PHP rendering')
 class PanelTests(unittest.TestCase):
-    def render(self, admin=True, ajax=False):
+    def render(self, admin=True, ajax=False, install_state=None):
         data = dict(ok=True, policy=copy.deepcopy(DEFAULT), sites=[], bans={}, history={'days': 30},
                     maintenance={}, presets={}, wordpress={}, cron={},
                     fail2ban=dict(installed=True, loaded=True, running=True, settings=copy.deepcopy(host.DEFAULT),
@@ -27,13 +27,16 @@ class PanelTests(unittest.TestCase):
         for key, spec in host.SERVICES.items():
             data['fail2ban']['services'][key] = dict(title=spec['title'], ready=True, ports=[2222],
                 source=dict(backend='auto', logpath='/var/log/<script>.log'), active=False, existing=[], ips=[])
+        if install_state:
+            data['install_job'] = dict(state=install_state, message='Installing Fail2ban packages.')
+            data['fail2ban'].update(running=False, error='Transient missing configuration during unpack')
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp)
             (path / 'data.json').write_text(json.dumps(data), encoding='utf-8')
             (path / 'render.php').write_text('''<?php
 define('SOFTACULOUS',true);
 $install=$argv[1];$fixture=json_decode(file_get_contents($argv[2]),true);
-$isAdmin=$argv[3]==='1';$actor=$isAdmin?'root':'alice';$owner=$actor;$csrf='fixture-token';$read_only=false;
+$isAdmin=$argv[3]==='1';$actor=$isAdmin?'root':'alice';$owner=$actor;$headerOwner=$owner;$csrf='fixture-token';$read_only=false;
 $meta=['version'=>'test'];$escape=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
 $bridge=static fn($request)=>$fixture;
 $_SERVER['REQUEST_METHOD']=$argv[4]==='1'?'POST':'GET';$_GET=[];$_POST=[];
@@ -76,3 +79,22 @@ require $install.'/panel/index.php';
     def test_account_cannot_request_admin_ajax_even_when_post_is_forged(self):
         result = json.loads(self.render(admin=False, ajax=True))
         self.assertFalse(result['ok']); self.assertNotIn('report', result)
+
+    def test_partial_package_is_shown_as_installing_and_not_as_a_broken_service(self):
+        for stage in ('queued', 'running'):
+            body = json.loads(self.render(ajax=True, install_state=stage))['report']
+            self.assertIn('<strong>Installation:</strong> In progress', body)
+            self.assertIn('data-installing="true"', body)
+            self.assertIn('refresh automatically', body)
+            self.assertNotIn('Not available', body)
+            self.assertNotIn('Transient missing configuration', body)
+            self.assertNotIn('Enable &amp; start existing', body)
+            self.assertNotIn('id="hdn-services-settings"', body)
+            parsed = Forms(); parsed.feed(body)
+            self.assertFalse(parsed.nested); self.assertEqual(parsed.depth, 0)
+
+    def test_failed_installation_keeps_actual_service_diagnostic_visible(self):
+        body = json.loads(self.render(ajax=True, install_state='failed'))['report']
+        self.assertIn('Not available', body)
+        self.assertIn('Transient missing configuration', body)
+        self.assertIn('data-installing="false"', body)
