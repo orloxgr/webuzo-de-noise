@@ -69,6 +69,32 @@ class Categories(unittest.TestCase):
             self.assertEqual(agent_catalog.observed('Mozilla/5.0 (compatible; ' + name + '/1.0)')[1], expected)
         self.assertEqual(agent_catalog.observed('NotGPTBot/1.0'), ('NotGPTBot/1.0', 'agents'))
 
+    def test_search_variants_and_scanners_from_declared_agents_are_classified(self):
+        for name in ('Baiduspider-render', 'Baiduspider-image', 'Baiduspider-mobile', 'Baiduspider-video',
+                     'Googlebot-Image', 'Googlebot-News', 'Googlebot-Video', 'PerplexityBot',
+                     'ExaSearchBot', 'ExaSearchBot-Images', 'DuckAssistBot'):
+            for version in ('1.0', '2.0'):
+                declared = 'Mozilla/5.0 (compatible; ' + name.lower() + '/' + version + ')'
+                self.assertEqual(agent_catalog.observed(declared), (name, 'search_agents'))
+        self.assertEqual(agent_catalog.observed('Mozilla/5.0 (compatible; CensysInspect/1.1)'),
+                         ('CensysInspect', 'tool_agents'))
+        self.assertEqual(agent_catalog.observed('Hello from Palo Alto Networks, find out more about our scans'),
+                         ('Palo Alto Networks', 'tool_agents'))
+        self.assertEqual(agent_catalog.observed('Expanse, a Palo Alto Networks company'),
+                         ('Palo Alto Networks', 'tool_agents'))
+
+    def test_variants_do_not_broaden_append_rules_or_match_unknown_product_suffixes(self):
+        for name in ('Googlebot-Image', 'Baiduspider-render', 'ExaSearchBot-Images'):
+            observed, _ = agent_catalog.observed('Mozilla/5.0 (' + name + '/1.0)')
+            self.assertEqual(policy.validate_agents([observed]), [name])
+        for value in ('NotGPTBot/1.0', 'NotPerplexityBot/1.0', 'Googlebot-ImageProxy/1.0',
+                      'Baiduspider-render-evil/1.0', 'ExaSearchBot-ImagesBackup/1.0',
+                      'Mozilla/5.0 Chrome/156.0.0.0', 'WordPress/7.0; https://example.test', 'MailPoet Cron', 'curl/8.7.1'):
+            self.assertEqual(agent_catalog.observed(value), (value, 'agents'))
+        for name in ('ChatGPT-User', 'Claude-User', 'Perplexity-User', 'ExaUser', 'facebookexternalhit', 'GoogleOther'):
+            self.assertEqual(agent_catalog.observed(name + '/1.0'), (name, 'agents'))
+            self.assertNotIn(name, agent_catalog.AI)
+
 
 @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Trusted native Linux log files')
 class Inventory(unittest.TestCase):
@@ -104,6 +130,25 @@ class Inventory(unittest.TestCase):
         self.assertEqual(rows['Unknown <tag>']['category'], 'agents')
         self.assertEqual(rows['OAI-SearchBot']['category'], 'search_agents')
         self.assertNotIn('private-query', json.dumps(result))
+        self.assertFalse((self.root / 'policy.json').exists())
+
+    def test_new_search_variants_group_versions_but_preserve_products_and_domain_counts(self):
+        (self.logs / 'one.test.log').write_text(
+            self.line(agent='Mozilla/5.0 (compatible; PerplexityBot/1.0)') +
+            self.line(agent='Mozilla/5.0 (compatible; Baiduspider-render/2.0)') +
+            self.line(agent='Googlebot-Image/1.0') + self.line(agent='Googlebot/2.1') +
+            self.line(agent='ExaSearchBot-Images/1.0'))
+        (self.logs / 'two.test.log').write_text(
+            self.line(agent='PerplexityBot/2.0') + self.line(agent='Baiduspider-render/3.0'))
+        result = self.scan('agents'); rows = {row['value']: row for row in result['findings']}
+        self.assertEqual(result['totals']['requests'], 7)
+        self.assertEqual(sum(row['count'] for row in rows.values()), 7)
+        self.assertEqual(rows['PerplexityBot']['count'], 2)
+        self.assertEqual(rows['Baiduspider-render']['count'], 2)
+        self.assertEqual(len(rows['Baiduspider-render']['domains']), 2)
+        self.assertEqual(rows['Googlebot-Image']['candidate'], 'Googlebot-Image')
+        self.assertEqual(rows['Googlebot']['count'], 1)
+        self.assertTrue(all(row['category'] == 'search_agents' for row in rows.values()))
         self.assertFalse((self.root / 'policy.json').exists())
 
     def test_php_counts_only_404_and_keeps_domains_exact_paths_and_safe_candidates(self):

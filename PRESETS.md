@@ -1,4 +1,4 @@
-# Presets — 0.12.0
+# Presets
 
 ## Scanner tools
 
@@ -17,38 +17,49 @@ DirBuster
 gobuster
 ffuf
 WPScan
+CensysInspect
+Expanse
+Palo Alto Networks
 ```
 
 These are scanning tools; authorized scans can use them too. The list matches
 declared names and is not identity verification.
 
-## Optional bulk / AI crawlers
+## AI training, search, SEO and other crawlers
 
-**User-Agents → Add bulk / AI crawlers** inserts these into the separate
-Crawlers / other agents box, with its own enable switch:
+Each **User-Agents** box has its own enable switch and **Add suggested agents**
+button. The buttons append suggestions to unsaved text; Save & Apply is required.
 
-```text
-meta-externalagent
-GoogleOther
-MJ12bot
-Bytespider
-ClaudeBot
-Amazonbot
-Reflectionbot
-GPTBot
-AhrefsBot
-SemrushBot
-DotBot
-BLEXBot
-YisouSpider
-ElevenlabsCrawler
-CCBot
-```
+| List | Suggested names |
+| --- | --- |
+| AI Training Crawlers | meta-externalagent, ClaudeBot, GPTBot, Reflectionbot, Amazonbot |
+| Search Indexers | LinkupBot, meta-webindexer, PetalBot, Baiduspider, ibou-search |
+| SEO & Backlink Crawlers | MJ12bot, AhrefsBot, SemrushBot, DotBot, BLEXBot, SERankingBacklinksBot |
+| Other Crawlers / Data Collection | GoogleOther, Bytespider, YisouSpider, ElevenlabsCrawler, CCBot |
 
-These are collection, search, training or SEO-analysis crawlers, not inherently malicious
-services. Use the group only when that traffic is unwanted. Googlebot, Bingbot,
-Applebot, social-preview and user-requested retrieval agents are not in either
-blocklist. Custom entries still apply literally.
+These names describe declared purposes, not maliciousness or verified identity.
+Some crawlers serve several products. AhrefsBot also supplies Yep, and Amazonbot
+has mixed product and potential AI-training uses. GoogleOther is a generic
+research/product crawler and is kept outside the AI training group.
+
+**Analyze current agents** additionally recognizes Baiduspider render/image/mobile/video,
+Googlebot image/news/video, PerplexityBot, ExaSearchBot and DuckAssistBot as search
+crawlers. CensysInspect and Palo Alto Networks declarations are classified as scanners.
+Versions of each product combine; image/render products remain separate so appending
+one does not silently select the parent crawler. Social previews, user-requested
+fetchers, application clients and unrecognized browser strings stay under Other.
+That placement is not a recommendation to block them.
+
+Googlebot, Bingbot, Applebot, PerplexityBot, ExaSearchBot, DuckAssistBot, social-preview
+and user-requested retrieval agents are recognized without being added to default
+block suggestions. Existing saved lists and switches are not updated automatically.
+Run a new analysis after upgrading to apply the current catalog to new results.
+
+Crawler documentation: [Exa](https://crawler.exa.ai/),
+[Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers),
+[DuckAssistBot](https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot),
+[Censys](https://docs.censys.com/docs/opt-out-of-data-collection),
+[Palo Alto Networks](https://cortex-docs.paloaltonetworks.com/cortex-xpanse/reference/scanning-activity.md).
 
 **Add optional search crawlers** separately suggests `LinkupBot`,
 `meta-webindexer`, `PetalBot`, `Baiduspider` and `ibou-search`. Review before saving: blocking

@@ -22,7 +22,7 @@ $reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : 'Analyze PH
 <button type="button" id="<?= $prefix ?>-cancel" class="button button-secondary" hidden>Cancel analysis</button>
 <p id="<?= $prefix ?>-progress" class="u-mt10" role="status"></p>
 </form>
-<p class="u-mb10"><?= $reviewKind === 'agents' ? 'Hits per declared agent, including asset requests. Recognized names are grouped across versions; other User-Agent strings are listed separately.' : 'Hits per PHP URL path that returned HTTP 404. Check the source domains before adding a path to the server-wide list; a 404 can also come from a legitimate application route.' ?></p>
+<p class="u-mb10"><?= $reviewKind === 'agents' ? 'Hits per declared agent, including asset requests. Recognized names are grouped across versions. Image and rendering crawlers stay separate. Browser strings, application clients and unrecognized names can appear under Other; that category does not mean they should be blocked.' : 'Hits per PHP URL path that returned HTTP 404. Check the source domains before adding a path to the server-wide list; a 404 can also come from a legitimate application route.' ?></p>
 <p class="u-mb10">Append adds selected entries to your unsaved lists. Review them, then Save &amp; Apply. Existing entries, enable switches and ban thresholds stay as you set them.</p>
 <?php require $install . '/panel/inventory-output.php'; ?>
 </section>
