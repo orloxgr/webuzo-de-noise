@@ -28,7 +28,7 @@ protect SSH, mailbox authentication, SMTP authentication and FTP on their detect
 
 ## Install
 
-1. Download `webuzo-de-noise-0.3.2.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.3.3.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
@@ -64,7 +64,11 @@ existing jails, listening ports and authentication log sources. SSH, Dovecot,
 Exim and PureFTPd have separate opt-in controls for attempts, counting windows,
 ban durations and never-ban networks. Existing matching jails are reported and
 left under their existing management; De-Noise does not create duplicates.
-Active CSF/LFD/BFD services are reported for review. After changing service ports
+When CSF or LFD is detected, De-Noise blocks enabling its SSH, mail and FTP
+protections in both the panel and backend. Existing De-Noise service jails can
+still be disabled; no existing jail or CSF/LFD setting is changed automatically.
+WordPress login protection remains available. Other active BFD protection is
+reported for review. After changing service ports
 or logging elsewhere, refresh status and Save & Apply again to update the owned
 jails.
 

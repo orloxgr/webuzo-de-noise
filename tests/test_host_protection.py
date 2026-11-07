@@ -19,6 +19,16 @@ from test_engine import fixture_read, fixture_replace
 
 
 class InputTests(unittest.TestCase):
+    def test_csf_and_lfd_installations_are_detected_even_without_a_running_service(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp); config = root / 'csf.conf'; unit = root / 'lfd.service'
+            with patch.object(host, 'COMPETING_PROTECTION', {'CSF': (str(config),), 'LFD': (str(unit),)}):
+                self.assertEqual(host.service_blockers(), [])
+                config.write_text('TESTING="0"')
+                self.assertEqual(host.service_blockers(), ['CSF'])
+                unit.write_text('[Unit]\nDescription=Existing LFD\n')
+                self.assertEqual(host.service_blockers(), ['CSF', 'LFD'])
+
     def test_only_supported_services_and_valid_ips_and_numbers_are_accepted(self):
         for key, value in [('maxretry', True), ('findtime', 0), ('bantime', -1),
                            ('enabled', 'yes'), ('ignore_ips', ['1.2.3.4\naction=bad'])]:
@@ -111,6 +121,46 @@ class TransactionTests(unittest.TestCase):
         self.enterContext(patch.object(host, 'duplicates', return_value=[]))
         self.enabled = copy.deepcopy(host.DEFAULT); self.enabled['imap']['enabled'] = True
         self.run = Mock(return_value='OK')
+
+    def test_csf_appearing_after_page_load_blocks_every_forged_service_enable_before_writes(self):
+        csf = self.root / 'csf.conf'
+        with patch.object(host, 'COMPETING_PROTECTION', {'CSF': (str(csf),)}), \
+                patch.object(engine, 'STATE', self.state), patch.object(engine, 'run', self.run):
+            self.assertFalse(host.snapshot(self.state, self.run)['service_activation_blocked'])
+            csf.write_text('TESTING = "0"\nLF_SSHD = "5"\n')
+            for key in host.SERVICES:
+                value = copy.deepcopy(host.DEFAULT); value[key]['enabled'] = True
+                with self.subTest(service=key), self.assertRaisesRegex(ValueError, 'cannot be enabled'):
+                    engine.dispatch(dict(actor='root', owner='root', action='fail2ban_save', settings=value))
+            self.run.assert_not_called()
+            self.assertEqual(list(self.state.iterdir()), [])
+            self.assertFalse((self.etc / host.CONFIG).exists())
+            self.assertEqual(csf.read_text(), 'TESTING = "0"\nLF_SSHD = "5"\n')
+
+    def test_csf_detection_allows_disabling_our_existing_jails_without_changing_other_protection(self):
+        csf = self.root / 'csf.conf'
+        other = self.etc / 'jail.d/other.local'; other.write_bytes(b'[other]\nenabled=true\n')
+        with patch.object(host, 'COMPETING_PROTECTION', {'CSF': (str(csf),)}):
+            with patch.object(host, 'active_jails', side_effect=[[], [host.jail('imap')]]):
+                host.apply(self.state, self.enabled, self.run)
+            csf.write_text('unchanged CSF settings')
+            self.assertTrue(host.settings(self.state)['imap']['enabled'])
+            status = host.snapshot(self.state, self.run)
+            self.assertTrue(status['service_activation_blocked'])
+            self.assertEqual(status['service_blockers'], ['CSF'])
+            with patch.object(host, 'active_jails', side_effect=[[host.jail('imap')], []]):
+                host.apply(self.state, copy.deepcopy(host.DEFAULT), self.run)
+            self.assertFalse(any(rule['enabled'] for rule in host.settings(self.state).values()))
+            self.assertEqual(other.read_bytes(), b'[other]\nenabled=true\n')
+            self.assertEqual(csf.read_text(), 'unchanged CSF settings')
+
+    def test_unverifiable_csf_inspection_blocks_activation_without_writes(self):
+        with patch.object(host, 'service_blockers', side_effect=PermissionError('inspection denied')):
+            with self.assertRaises(PermissionError): host.apply(self.state, self.enabled, self.run)
+            status = host.snapshot(self.state, self.run)
+        self.assertTrue(status['service_activation_blocked'])
+        self.run.assert_not_called()
+        self.assertEqual(list(self.state.iterdir()), [])
 
     def test_apply_changes_only_our_files_and_uses_service_ports_with_native_action(self):
         other = self.etc / 'jail.d/other.local'; other.write_bytes(b'[other]\nenabled=true\n')

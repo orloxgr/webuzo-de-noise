@@ -55,6 +55,15 @@ class WordPressTests(unittest.TestCase):
         wordpress.apply(self.state, value, self.run)
         self.run.assert_called_once_with(wordpress.CLIENT, 'get', 'dbpurgeage')
 
+    def test_csf_blocks_service_jails_but_wordpress_protection_remains_available(self):
+        host = engine.host_protection
+        config = self.root / 'csf.conf'; config.write_text('Existing CSF settings')
+        with patch.object(host, 'COMPETING_PROTECTION', {'CSF': (str(config),)}):
+            self.assertEqual(host.service_blockers(), ['CSF'])
+            wordpress.apply(self.state, {**wordpress.DEFAULT, 'enabled': True}, self.run)
+        self.assertIn('enabled = true', (self.etc / 'jail.d/webuzo-denoise-wordpress.local').read_text())
+        self.assertEqual(config.read_text(), 'Existing CSF settings')
+
     def test_candidate_failure_restores_previous_jail_settings_and_other_files(self):
         initial = {**copy.deepcopy(wordpress.DEFAULT), 'enabled': True}
         wordpress.apply(self.state, initial, self.run)

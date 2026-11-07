@@ -21,6 +21,14 @@ SETTINGS = 'host-protection.json'
 JOURNAL = 'host-protection-transaction.json'
 RECEIPT = 'host-protection-install.json'
 CONFIG = 'jail.d/webuzo-de-noise-services.local'
+COMPETING_PROTECTION = {
+    'CSF': ('/etc/csf/csf.conf', '/usr/sbin/csf', '/usr/bin/csf', '/usr/local/sbin/csf', '/usr/local/bin/csf',
+            '/usr/local/csf/bin/csf.pl', '/etc/init.d/csf',
+            '/etc/systemd/system/csf.service', '/usr/lib/systemd/system/csf.service', '/lib/systemd/system/csf.service'),
+    'LFD': ('/usr/sbin/lfd', '/usr/bin/lfd', '/usr/local/sbin/lfd', '/usr/local/bin/lfd',
+            '/usr/local/csf/bin/lfd', '/etc/init.d/lfd', '/etc/systemd/system/lfd.service',
+            '/usr/lib/systemd/system/lfd.service', '/lib/systemd/system/lfd.service'),
+}
 SERVICES = {
     'ssh': dict(title='SSH', filter='sshd', processes=['sshd'], units=['ssh', 'sshd'],
                 logs=['/var/log/auth.log', '/var/log/secure'], journal='_COMM=sshd + _COMM=sshd-session'),
@@ -47,6 +55,29 @@ def client():
     if not path:
         raise ValueError('Fail2ban is not installed. Open Fail2ban to install it first.')
     return path
+
+
+def service_blockers():
+    """Detect installed CSF/LFD without executing or modifying either tool."""
+    found = []
+    for name, candidates in COMPETING_PROTECTION.items():
+        for candidate in candidates:
+            try:
+                Path(candidate).lstat()
+            except FileNotFoundError:
+                continue
+            # A link or a stopped unit still identifies an existing installation.
+            # Unexpected inspection errors propagate, so activation fails closed.
+            found.append(name)
+            break
+    return found
+
+
+def activation_error(blockers):
+    return ('CSF/LFD detected: ' + ', '.join(blockers) +
+            '. SSH, mail and FTP protection cannot be enabled in De-Noise. '
+            'WordPress login protection remains available. '
+            'Existing jails are not changed automatically.')
 
 
 def jail(key):
@@ -360,6 +391,10 @@ def recover(state, run):
 
 def apply(state, value, run):
     value = validate(value)
+    if any(rule['enabled'] for rule in value.values()):
+        blockers = service_blockers()
+        if blockers:
+            raise ValueError(activation_error(blockers))
     active = active_jails(run)
     detected = discover(run)
     tests = {}
@@ -428,6 +463,15 @@ def uninstall(state, run):
 def snapshot(state, run, live=False):
     result = dict(installed=binary('fail2ban-client') is not None, loaded=live, settings=settings(state), services={},
                   active_jails=[], conflicts=[], running=False)
+    try:
+        result['service_blockers'] = service_blockers()
+        result['service_activation_blocked'] = bool(result['service_blockers'])
+        result['conflicts'] = list(result['service_blockers'])
+        if result['service_activation_blocked']:
+            result['service_activation_error'] = activation_error(result['service_blockers'])
+    except OSError as error:
+        result.update(service_activation_blocked=True,
+                      service_activation_error='Cannot check CSF/LFD installation. SSH, mail and FTP activation is blocked: ' + str(error))
     if not live or not result['installed']:
         return result
     try:
@@ -441,7 +485,8 @@ def snapshot(state, run, live=False):
         for unit in ('lfd', 'csf', 'bfd'):
             try:
                 if run(binary('systemctl') or '/usr/bin/systemctl', 'is-active', unit).strip() == 'active':
-                    result['conflicts'].append(unit.upper())
+                    if unit.upper() not in result['conflicts']:
+                        result['conflicts'].append(unit.upper())
             except RuntimeError:
                 pass
     except (OSError, RuntimeError, ValueError) as error:

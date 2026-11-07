@@ -5,6 +5,7 @@ $f2bRules = $f2b['settings'] ?? [];
 $installJob = $data['install_job'] ?? ['state' => 'idle'];
 $installPlan = $data['install_plan'] ?? null;
 $installing = in_array($installJob['state'], ['queued', 'running'], true);
+$activationBlocked = !empty($f2b['service_activation_blocked']);
 ?>
 <section class="box-collapse u-mb20" id="hdn-wordpress-protection"><div class="box-collapse-content">
 <?php if (!$installing && !empty($f2b['installed'])): ?>
@@ -45,7 +46,8 @@ $installing = in_array($installJob['state'], ['queued', 'running'], true);
 <div id="hdn-install-progress" class="alert <?= $installJob['state'] === 'failed' ? 'alert-danger' : 'alert-info' ?> u-mb20" role="status" data-state="<?= $escape($installJob['state']) ?>"><?= $escape($installJob['error'] ?? $installJob['message'] ?? 'Fail2ban installation is in progress. You can leave this page and return to check its status.') ?></div>
 <form method="post" id="hdn-install-poll"><?php $fields('fail2ban_install_status'); ?><button class="button button-secondary u-mb20" type="submit">Check installation progress</button></form>
 <?php endif; ?>
-<?php if (!empty($f2b['conflicts'])): ?><div class="alert alert-warning u-mb20">Other protection is active: <?= $escape(implode(', ', $f2b['conflicts'])) ?>. Review its authentication protections before adding another jail for the same service. De-Noise leaves these tools enabled and unchanged.</div><?php endif; ?>
+<?php if ($activationBlocked): ?><div class="alert alert-warning u-mb20" role="status"><?= $escape($f2b['service_activation_error']) ?></div>
+<?php elseif (!empty($f2b['conflicts'])): ?><div class="alert alert-warning u-mb20">Other protection is active: <?= $escape(implode(', ', $f2b['conflicts'])) ?>. Review its authentication protections before adding another jail for the same service. De-Noise leaves these tools enabled and unchanged.</div><?php endif; ?>
 <?php if (!empty($f2b['active_jails'])): ?><p class="u-mb20"><strong>Existing active jails:</strong> <?= $escape(implode(', ', $f2b['active_jails'])) ?>. Jails created outside De-Noise are managed separately.</p><?php endif; ?>
 <?php if (!$installing && !empty($f2b['services'])): ?>
 <form method="post" id="hdn-services-settings"><?php $fields('fail2ban_save'); ?></form>
@@ -58,7 +60,8 @@ $installing = in_array($installJob['state'], ['queued', 'running'], true);
 <?php if (!empty($serviceInfo['source'])): ?><p class="u-mb10"><strong>Log source:</strong> <code><?= $escape($serviceInfo['source']['logpath'] ?? $serviceInfo['source']['journalmatch']) ?></code></p><?php endif; ?>
 <?php if ($existing): ?><div class="alert alert-info u-mb10">Existing protection: <?= $escape(implode(', ', $existing)) ?>. De-Noise will not create a duplicate. Configure this jail in its existing configuration.</div><?php endif; ?>
 <?php if (!empty($serviceInfo['error'])): ?><p class="u-mb10"><?= $escape($serviceInfo['error']) ?></p><?php endif; ?>
-<?php $blocked = (!$serviceInfo['ready'] || $existing) && empty($rule['enabled']); ?>
+<?php $blocked = ($activationBlocked || !$serviceInfo['ready'] || $existing) && empty($rule['enabled']); ?>
+<?php if ($activationBlocked && !empty($rule['enabled'])): ?><p class="u-mb10">This De-Noise protection is already enabled. Uncheck all enabled service protections and save to disable them. Enabling or reapplying them is blocked while CSF/LFD is installed.</p><?php endif; ?>
 <label class="form-label u-block u-mb10"><input form="hdn-services-settings" type="checkbox" name="services[<?= $escape($service) ?>][enabled]" <?= !empty($rule['enabled']) ? 'checked' : '' ?> <?= $blocked ? 'disabled' : '' ?>> Enable <?= $escape($serviceInfo['title']) ?> protection</label>
 <?php if ($blocked): ?>
 <?php foreach (['maxretry', 'findtime', 'bantime'] as $setting): ?><input form="hdn-services-settings" type="hidden" name="services[<?= $escape($service) ?>][<?= $escape($setting) ?>]" value="<?= $escape($rule[$setting]) ?>"><?php endforeach; ?>
@@ -81,8 +84,8 @@ $installing = in_array($installJob['state'], ['queued', 'running'], true);
 <?php endif; ?>
 </div></section>
 <?php endforeach; ?></div>
-<button form="hdn-services-settings" class="button u-mt20 u-mb20" type="submit">Save &amp; Apply service protection</button>
+<button form="hdn-services-settings" class="button u-mt20 u-mb20" type="submit" <?= $activationBlocked && !array_filter($f2bRules, static fn($rule) => !empty($rule['enabled'])) ? 'disabled' : '' ?>>Save &amp; Apply service protection</button>
 <p class="u-mb20">Enabled filters are tested against recent logs before saving. Configuration is validated and reloaded; a failed change restores the previous configuration. Service configuration files are unchanged. After changing service ports or log settings elsewhere, refresh status and Save &amp; Apply again.</p>
 <?php endif; ?>
 </div>
-<?php unset($f2b, $f2bRules, $installJob, $installPlan, $installing); ?>
+<?php unset($f2b, $f2bRules, $installJob, $installPlan, $installing, $activationBlocked); ?>

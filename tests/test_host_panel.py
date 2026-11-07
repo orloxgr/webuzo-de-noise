@@ -1,6 +1,7 @@
 """Native panel layout, separate forms, admin access and AJAX rendering."""
 import copy
 import json
+import html.parser
 from pathlib import Path
 import shutil
 import subprocess
@@ -19,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @unittest.skipUnless(shutil.which('php'), 'Native PHP rendering')
 class PanelTests(unittest.TestCase):
-    def render(self, admin=True, ajax=False, install_state=None):
+    def render(self, admin=True, ajax=False, install_state=None, csf=False, services_enabled=False):
         data = dict(ok=True, policy=copy.deepcopy(DEFAULT), sites=[], bans={}, history={'days': 30},
                     maintenance={}, presets={}, wordpress={}, cron={},
                     fail2ban=dict(installed=True, loaded=True, running=True, settings=copy.deepcopy(host.DEFAULT),
@@ -27,6 +28,10 @@ class PanelTests(unittest.TestCase):
         for key, spec in host.SERVICES.items():
             data['fail2ban']['services'][key] = dict(title=spec['title'], ready=True, ports=[2222],
                 source=dict(backend='auto', logpath='/var/log/<script>.log'), active=False, existing=[], ips=[])
+            data['fail2ban']['settings'][key]['enabled'] = services_enabled
+        if csf:
+            data['fail2ban'].update(service_blockers=['CSF', 'LFD'], service_activation_blocked=True,
+                                   service_activation_error=host.activation_error(['CSF', 'LFD']))
         if install_state:
             data['install_job'] = dict(state=install_state, message='Installing Fail2ban packages.')
             data['fail2ban'].update(running=False, error='Transient missing configuration during unpack')
@@ -98,3 +103,19 @@ require $install.'/panel/index.php';
         self.assertIn('Not available', body)
         self.assertIn('Transient missing configuration', body)
         self.assertIn('data-installing="false"', body)
+
+    def test_csf_blocks_service_controls_but_wordpress_controls_remain_available(self):
+        class Inputs(html.parser.HTMLParser):
+            def __init__(self): super().__init__(); self.inputs = {}
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if tag == 'input' and attrs.get('type') == 'checkbox': self.inputs[attrs['name']] = attrs
+        for enabled in (False, True):
+            body = json.loads(self.render(ajax=True, csf=True, services_enabled=enabled))['report']
+            fields = Inputs(); fields.feed(body)
+            for key in host.SERVICES:
+                self.assertEqual('disabled' in fields.inputs['services[' + key + '][enabled]'], not enabled)
+            self.assertNotIn('disabled', fields.inputs['wordpress_enabled'])
+            self.assertIn('WordPress login protection remains available.', body)
+            self.assertLess(body.index('WordPress login protection'), body.index('<h2 class="u-mb20">Fail2ban</h2>'))
+            if enabled: self.assertIn('Uncheck all enabled service protections', body)
