@@ -6,6 +6,14 @@ $installJob = $data['install_job'] ?? ['state' => 'idle'];
 $installPlan = $data['install_plan'] ?? null;
 $installing = in_array($installJob['state'], ['queued', 'running'], true);
 ?>
+<section class="box-collapse u-mb20" id="hdn-wordpress-protection"><div class="box-collapse-content">
+<?php if (!$installing && !empty($f2b['installed'])): ?>
+<?php require $install . '/panel/wordpress.php'; ?>
+<?php else: ?>
+<h2 class="u-mb20">WordPress login protection</h2>
+<p class="u-mb20"><?= $installing ? 'Waiting for Fail2ban installation to finish.' : 'Install Fail2ban below first. WordPress login protection also requires the WP fail2ban plugin to be installed manually in each WordPress site you want to protect.' ?></p>
+<?php endif; ?>
+</div></section>
 <h2 class="u-mb20">Fail2ban</h2>
 <p class="u-mb20">Protect server services from repeated failed logins. These settings work independently of website Observe / Enforce modes. Each ban affects only the protected service's listed TCP ports.</p>
 <div id="hdn-fail2ban-status" data-loaded="<?= !empty($f2b['loaded']) ? 'true' : 'false' ?>" data-installing="<?= $installing ? 'true' : 'false' ?>">
@@ -77,9 +85,4 @@ $installing = in_array($installJob['state'], ['queued', 'running'], true);
 <p class="u-mb20">Enabled filters are tested against recent logs before saving. Configuration is validated and reloaded; a failed change restores the previous configuration. Service configuration files are unchanged. After changing service ports or log settings elsewhere, refresh status and Save &amp; Apply again.</p>
 <?php endif; ?>
 </div>
-<details class="box-collapse u-mt20"><summary class="box-collapse-header">WordPress login protection</summary><div class="box-collapse-content">
-<?php if (!$installing): ?>
-<?php if (!empty($f2b['installed'])): require $install . '/panel/wordpress.php'; else: ?><p>Install Fail2ban first. WordPress login protection also requires the WP fail2ban plugin to be installed manually in each WordPress site you want to protect.</p><?php endif; ?>
-<?php endif; ?>
-</div></details>
 <?php unset($f2b, $f2bRules, $installJob, $installPlan, $installing); ?>
