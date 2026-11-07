@@ -9,7 +9,7 @@ import enumeration
 import agent_catalog
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.2.2'
+VERSION = '0.3.0'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
@@ -19,7 +19,7 @@ CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
 SEARCH_AGENTS = agent_catalog.SEARCH
 PRESET_AGENTS = SCANNER_AGENTS + CRAWLER_AGENTS[:3]
 FILTER_AGENTS = ['Applebot', 'Amazonbot', 'Reflectionbot', 'Googlebot', 'bingbot']
-DEFAULT = {'schema': 10, 'mode': 'observe', 'agents': [], 'scanners': False,
+DEFAULT = {'schema': 11, 'mode': 'observe', 'agents': [], 'scanners': False,
            'enumeration': copy.deepcopy(enumeration.SETTINGS),
            'log_rejections': False, 'mail_protection': False,
            'login': {'enabled': False, 'rate': 5, 'burst': 3},
@@ -36,13 +36,13 @@ DEFAULT = {'schema': 10, 'mode': 'observe', 'agents': [], 'scanners': False,
                     'suspicious_queries': {'enabled': False, 'maxretry': 2, 'findtime': 60,
                                            'duration_days': 3, 'targets': list(probe_rules.QUERY_TARGETS),
                                            'parameters': list(probe_rules.QUERY_PARAMETERS)}},
-           'probe_exceptions': {'files': {}, 'queries': {}},
-           'domain_bans': {'allow_users': True, 'sites': {}}}
+           'probe_exceptions': {'files': {}, 'queries': {}}}
 for _field in ('ai_agents', 'search_agents', 'seo_agents'):
     DEFAULT[_field] = []
     DEFAULT[_field + '_enabled'] = True
 AGENT_KEYS = {key for field in ('ai_agents', 'search_agents', 'seo_agents') for key in (field, field + '_enabled')}
-V9_KEYS = set(DEFAULT) - AGENT_KEYS
+V10_KEYS = set(DEFAULT) | {'domain_bans'}
+V9_KEYS = V10_KEYS - AGENT_KEYS
 LEGACY_KEYS = {'schema', 'mode', 'agents', 'scanners', 'login', 'xmlrpc', 'overrides'}
 V7_KEYS = V9_KEYS - {'log_rejections', 'mail_protection', 'enumeration'}
 PRIVATE_PATTERNS = [
@@ -107,7 +107,7 @@ def validate(raw):
         data['bans'].update({key: copy.deepcopy(DEFAULT['bans'][key]) for key in ('missing_files', 'suspicious_queries')})
         data.update(schema=5, probe_exceptions={'files': {}, 'queries': {}})
     if data.get('schema') == 5 and set(data) == V7_KEYS - {'domain_bans'}:
-        data.update(schema=6, domain_bans=copy.deepcopy(DEFAULT['domain_bans']))
+        data.update(schema=6, domain_bans={'allow_users': True, 'sites': {}})
     if data.get('schema') == 6 and set(data) == V7_KEYS:
         if not isinstance(data.get('bans'), dict) or not isinstance(data.get('domain_bans'), dict):
             raise ValueError('Invalid saved automatic-ban settings')
@@ -143,7 +143,10 @@ def validate(raw):
             data[field + '_enabled'] = data['agents_enabled']
         data['agents'] = [value for value in previous if agent_catalog.classify(value) not in ('ai_agents', 'search_agents', 'seo_agents')]
         data['schema'] = 10
-    if data.get('schema') != 10 or set(data) != set(DEFAULT):
+    if data.get('schema') == 10 and set(data) == V10_KEYS:
+        data.pop('domain_bans')
+        data['schema'] = 11
+    if data.get('schema') != 11 or set(data) != set(DEFAULT):
         raise ValueError('Unsupported policy format')
     enumeration.validate(data['enumeration'], target)
     if data['mode'] not in MODES or type(data['scanners']) is not bool:
@@ -183,16 +186,6 @@ def validate(raw):
             or type(rule['exclude_static']) is not bool or type(rule['min_distinct_paths']) is not int
             or not rule['min_distinct_paths'] >= 1):
         raise ValueError('Invalid general 404 automatic-ban controls')
-    delegation = data['domain_bans']
-    if (not isinstance(delegation, dict) or set(delegation) != {'allow_users', 'sites'}
-            or type(delegation['allow_users']) is not bool or not isinstance(delegation['sites'], dict)
-            ):
-        raise ValueError('Invalid domain automatic-ban settings')
-    for key, rules in delegation['sites'].items():
-        target(key)
-        if (not isinstance(rules, dict) or set(rules) != {'missing_files', 'suspicious_queries', 'any_404'}
-                or any(type(value) is not bool for value in rules.values())):
-            raise ValueError('Domain owners may select trigger categories only')
     return validate_rules(data)
 
 
@@ -346,7 +339,7 @@ def site_mode(policy, site):
     return policy['overrides'].get(site['key'], policy['mode']) if not site.get('suspended') else 'off'
 
 
-def global_config(policy, sites, domain_blocks=None, global_blocks=None):
+def global_config(policy, sites, global_blocks=None):
     policy = validate(policy)
     # Declare a safe mode even on a new server with no domains yet. Supported
     # virtual hosts set this changeable variable during their rewrite phase.
@@ -356,21 +349,7 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
         address = ipaddress.ip_address(value)
         lines.append('    ' + str(address) + ('/32' if address.version == 4 else '/128') + ' 1;')
     lines += ['}']
-    block_variables = []
-    known = {site['key']: site for site in sites if site.get('supported', True) and not site.get('suspended')}
-    for key, addresses in sorted((domain_blocks or {}).items()):
-        if key not in known or site_mode(policy, known[key]) != 'enforce' or not addresses:
-            continue
-        name = 'hdn_domain_' + hashlib.sha256(key.encode()).hexdigest()[:16]
-        lines += ['geo $remote_addr $' + name + ' {', '    default 0;']
-        for address in sorted(addresses):
-            ip = ipaddress.ip_address(address)
-            lines += ['    ' + str(ip) + ('/32' if ip.version == 4 else '/128') + ' 1;']
-        lines += ['}']
-        block_variables.append((domain(known[key].get('domain', key.split('/', 1)[1])), name))
-    lines += ['map $hdn_site $hdn_domain_blocked {', '    default 0;']
-    lines += ['    ' + host + ' $' + name + ';' for host, name in block_variables]
-    lines += ['}', 'map $hdn_site $hdn_mode { default off; }',
+    lines += ['map $hdn_site $hdn_mode { default off; }',
              'map $http_user_agent $hdn_agent {', '    default 0;']
     entries = agent_catalog.enabled(policy)
     lines += ['    ' + literal_regex(entry) + ' 1;' for entry in dict.fromkeys(entries)]
@@ -439,8 +418,8 @@ def global_config(policy, sites, domain_blocks=None, global_blocks=None):
         lines += ['    ' + pattern('(?:^|:)' + label + '(?:$|:)') + ' ' + label + ';']
     lines += ['    ' + pattern('(?:^|:)login(?:$|:)') + ' login;',
               '    ' + pattern('(?:^|:)xmlrpc(?:$|:)') + ' xmlrpc;']
-    lines += ['}', 'map "$hdn_global_blocked:$hdn_domain_blocked:$hdn_match_base" $hdn_match {',
-              '    default $hdn_match_base;', '    ~^1: global-ban;', '    ~^0:1: domain-ban;', '}',
+    lines += ['}', 'map "$hdn_global_blocked:$hdn_match_base" $hdn_match {',
+              '    default $hdn_match_base;', '    ~^1: global-ban;', '}',
               'map $hdn_match $hdn_block {', '    default 0;', '    private-file 1;',
               '    agent 1;', '    ~^filter-block- 1;', '}',
               'map "$hdn_mode:$hdn_static_candidate" $hdn_static_reject {', '    default 0;', '    ~^enforce:static- 1;', '}',
@@ -471,8 +450,6 @@ def site_config(policy, site, document_root=None):
     lines = [MARKER, 'set $hdn_site ' + domain(site.get('domain', site['key'].split('/', 1)[1])) + ';', 'set $hdn_mode ' + mode + ';']
     if policy['bans']['enabled'] or site.get('global_bans'):
         lines += ['if ($hdn_global_blocked) { return 403; }']
-    if mode == 'enforce':
-        lines += ['if ($hdn_domain_blocked) { return 403; }']
     if site.get('kind') == 'mail':
         if mode == 'enforce':
             lines += ['if ($hdn_direct_reject) { return 403; }', 'if ($hdn_block) { return 403; }']
@@ -480,8 +457,7 @@ def site_config(policy, site, document_root=None):
         if policy['bans']['enabled']:
             lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_bans if=$hdn_autoban_log;']
         return '\n'.join(lines) + '\n'
-    local = policy['domain_bans']['sites'].get(site['key'], {})
-    if mode != 'off' and ((policy['bans']['enabled'] and policy['bans']['missing_files']['enabled']) or local.get('missing_files')):
+    if mode != 'off' and (policy['bans']['enabled'] and policy['bans']['missing_files']['enabled']):
         if not document_root or not re.fullmatch(r'/[A-Za-z0-9_./-]+', document_root) or '..' in document_root.split('/'):
             raise ValueError('PHP probe protection needs one literal document root: ' + site['key'])
         lines += ['set $hdn_probe_filename "";',
@@ -513,8 +489,6 @@ def site_config(policy, site, document_root=None):
     lines += ['access_log /var/log/webuzo-de-noise/matches.log hdn if=$hdn_log;']
     if policy['bans']['enabled']:
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_bans if=$hdn_autoban_log;']
-    if any(local.values()):
-        lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_domain_bans if=$hdn_domain_autoban_log;']
-    if not site.get('native_access_logging') and ((policy['bans']['enabled'] and policy['bans']['any_404']['enabled']) or local.get('any_404')):
+    if not site.get('native_access_logging') and (policy['bans']['enabled'] and policy['bans']['any_404']['enabled']):
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_early_404 if=$hdn_early_404_log;']
     return '\n'.join(lines) + '\n'

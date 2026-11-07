@@ -132,16 +132,11 @@ def compile_maps(policy, sites, pattern, exact):
               for site in sites if site.get('supported', True) and not site.get('suspended')]
     lines += ['}']
     settings = policy['bans']
-    preferences = policy['domain_bans']['sites']
     for kind, key in [('file', 'missing_files'), ('query', 'suspicious_queries')]:
-        lines += ['map $hdn_site $hdn_local_' + kind + '_site {', '    default 0;']
-        lines += ['    ' + site.get('domain', site['key'].split('/', 1)[1]) + ' 1;'
-                  for site in sites if site.get('supported', True) and not site.get('suspended')
-                  and preferences.get(site['key'], {}).get(key)]
-        lines += ['}', 'map "$hdn_ban_site:$hdn_local_' + kind + '_site:$hdn_probe_web_site" $hdn_probe_' + kind + '_site {',
-                  '    default 0;', '    ~:1:1$ 1;']
-        if settings[key]['enabled']:
-            lines += ['    ~^1:[01]:1$ 1;']
+        lines += ['map "$hdn_ban_site:$hdn_probe_web_site" $hdn_probe_' + kind + '_site {',
+                  '    default 0;']
+        if settings['enabled'] and settings[key]['enabled']:
+            lines += ['    ~^1:1$ 1;']
         lines += ['}']
     for kind in ('files', 'queries'):
         lines += ['map "$hdn_site:$uri" $hdn_probe_' + kind + '_exempt {', '    default 0;']
@@ -152,10 +147,10 @@ def compile_maps(policy, sites, pattern, exact):
                           for value in policy['probe_exceptions'][kind].get(site['key'], [])]
         lines += ['}']
     lines += ['map $uri $hdn_probe_file_path {', '    default "";']
-    if (settings['enabled'] and settings['missing_files']['enabled']) or any(value['missing_files'] for value in preferences.values()):
+    if settings['enabled'] and settings['missing_files']['enabled']:
         lines += ['    ' + exact(unquote(path)) + ' ' + token('f', path) + ';'
                   for path in settings['missing_files']['paths']]
-    query_enabled = (settings['enabled'] and settings['suspicious_queries']['enabled']) or any(value['suspicious_queries'] for value in preferences.values())
+    query_enabled = settings['enabled'] and settings['suspicious_queries']['enabled']
     source = '$args' if query_enabled else '""'
     lines += ['}', 'map ' + source + ' $hdn_probe_query_path {', '    default "";']
     if query_enabled and settings['suspicious_queries']['parameters']:
@@ -187,13 +182,6 @@ def compile_maps(policy, sites, pattern, exact):
               'map $request_uri $hdn_request_path {', '    default "";',
               '    ' + pattern('^([^?]*)') + ' $1;', '}',
               event_format('hdn_bans', '$hdn_event_reason', '$hdn_event_token')]
-    lines += ['map "$hdn_local_query_site:$hdn_probe_query:$hdn_local_file_site:$hdn_probe_file" $hdn_domain_reason {',
-              '    default "";', '    ' + pattern('^1:q[0-9a-f]{16}:') + ' domain-query;',
-              '    ' + pattern(':1:f[0-9a-f]{16}$') + ' domain-file;', '}',
-              'map "$hdn_mode:$hdn_domain_reason:$status" $hdn_domain_autoban_log {',
-              '    default 0;', '    ~^enforce:domain-(file|query):404$ 1;', '}',
-              'map $hdn_domain_reason $hdn_domain_token { default -; domain-file $hdn_probe_file; domain-query $hdn_probe_query; }',
-              event_format('hdn_domain_bans', '$hdn_domain_reason', '$hdn_domain_token')]
     # Fallback for configurations without complete native server-level logging.
     # Standard Webuzo virtual hosts already log these local 404s, so their site
     # snippets omit this extra event to retain one strike per actual request.

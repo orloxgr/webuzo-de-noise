@@ -237,6 +237,8 @@ def snapshot(state, run, live=False, page=1):
             offset = (meta['page'] - 1) * ban_history.PAGE_SIZE
             result.update(ips=all_ips[offset:offset + ban_history.PAGE_SIZE], pagination=meta)
         result['available'] = True
+    except FileNotFoundError:
+        result.update(available=False, error='Fail2ban is not installed. Install it from the Fail2ban section first.')
     except (OSError, RuntimeError) as error:
         result.update(available=False, error=str(error))
     return result

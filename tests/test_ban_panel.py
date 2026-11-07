@@ -6,6 +6,9 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 
 from policy import DEFAULT
 
@@ -46,13 +49,13 @@ class BanPanelTests(unittest.TestCase):
         self.assertIn('hdn-activity-scan',r.stdout)
 
     def render(self, view, scope):
-        data = dict(policy=copy.deepcopy(DEFAULT),sites=[],history={'days':30},bans={},domain_bans={})
+        data = dict(policy=copy.deepcopy(DEFAULT),sites=[],history={'days':30},bans={})
         meta=dict(page=2,pages=4,total=177,per_page=50,view=view)
-        row=dict(ip='198.51.100.7',domain='one.test',reason='domain-file' if scope=='domain' else 'private-file',
+        row=dict(ip='198.51.100.7',domain='one.test',reason='private-file',
                  created=1000,expires=0,ended=1100,status='released' if view=='history' else 'active',error='',
                  diagnostics=dict(v=1,count=2,maxretry=2,findtime=60,duration_days=3,
                                   samples=[dict(at=1000,domain='one.test',reason='private-file',method='GET',path='/<img onerror=alert(1)>')]))
-        data['bans' if scope=='bans' else 'domain_bans'] = dict(rows=[row],pagination=meta,active=177,pending=0)
+        data['bans'] = dict(rows=[row],pagination=meta,active=177,pending=0)
         if scope=='wordpress':
             data['wordpress']=dict(loaded=True,available=True,active=True,ips=['198.51.100.7'],pagination=meta)
         fixture={'data':data,'listing':dict(bans_page=2,bans_view=view if scope=='bans' else 'active',
@@ -69,13 +72,13 @@ class BanPanelTests(unittest.TestCase):
                     foreach($listing as $k=>$v)echo '<input name="'.$escape($k).'" value="'.$escape($v).'">';};
                 require $install.'/panel/'.$argv[3].'.php';
             ''')
-            r=subprocess.run(['php',str(source),str(payload),str(ROOT),{'bans':'bans','domain':'domain-bans','wordpress':'wordpress'}[scope]],capture_output=True,text=True,timeout=10)
+            r=subprocess.run(['php',str(source),str(payload),str(ROOT),{'bans':'bans','wordpress':'wordpress'}[scope]],capture_output=True,text=True,timeout=10)
             self.assertEqual(r.returncode,0,r.stderr);self.assertEqual(r.stderr,'')
         parsed=Forms();parsed.feed(r.stdout)
         return parsed,r.stdout
 
     def test_active_and_history_forms_do_not_nest_and_links_preserve_tab_and_scope(self):
-        for scope,tab in [('bans','bans'),('domain','domain-bans')]:
+        for scope,tab in [('bans','bans')]:
             for view in ['active','history']:
                 with self.subTest(scope=scope,view=view):
                     parsed,body=self.render(view,scope)

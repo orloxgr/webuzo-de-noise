@@ -217,42 +217,6 @@ class NativeNginxTests(unittest.TestCase):
         result = subprocess.run([NGINX, '-p', self.directory.as_posix()+'/', '-c', 'long-query.conf', '-t'], text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_domain_only_protection_and_ipv4_ipv6_bans_do_not_affect_other_hosts(self):
-        with socket.socket() as probe:
-            probe.bind(('127.0.0.1', 0)); port = probe.getsockname()[1]
-        policy = copy.deepcopy(DEFAULT); policy['mode'] = 'enforce'
-        policy['domain_bans']['sites'] = {'alice/one.test': {'missing_files': True, 'suspicious_queries': True, 'any_404': False}}
-        sites = [{'key': 'alice/one.test'}, {'key': 'bob/two.test'}]
-        blocks = {'alice/one.test': {'127.0.0.9': {}, '::1': {}}}
-        text = 'pid logs/domain.pid;\nerror_log logs/domain-error.log;\nevents {}\nhttp {\n' + global_config(policy, sites, blocks)
-        for site in sites:
-            host = site['key'].split('/')[1]
-            text += 'server { listen 127.0.0.1:' + str(port) + '; listen [::1]:' + str(port) + '; server_name '+host+' www.'+host+';\n'
-            text += site_config(policy, site, str(self.directory)).replace('/var/log/webuzo-de-noise/matches.log', str(self.directory/'domain-matches.log')).replace('/var/log/webuzo-de-noise/ban-events.log', str(self.directory/'domain-events.log'))
-            text += 'location / { proxy_pass http://127.0.0.1:'+str(self.origin_port)+'; }\n}\n'
-        text += '}\n'; (self.directory/'domain.conf').write_text(isolated_config(text, self.directory))
-        command = [NGINX, '-p', str(self.directory)+'/', '-c', 'domain.conf']
-        result = subprocess.run(command, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        def get(host, path='/', address='127.0.0.1', source=None):
-            connection = http.client.HTTPConnection(address, port, timeout=3, source_address=(source,0) if source else None)
-            connection.request('GET', path, headers={'Host':host}); response = connection.getresponse()
-            status = response.status; response.read(); connection.close(); return status
-        try:
-            self.assertEqual(get('one.test','/auth.php'),404)
-            self.assertEqual(get('two.test','/auth.php'),200)
-            self.assertEqual(get('one.test','/?file=/etc/passwd'),404)
-            self.assertEqual(get('two.test','/?file=/etc/passwd'),200)
-            self.assertEqual(get('one.test',source='127.0.0.9'),403)
-            self.assertEqual(get('www.one.test',source='127.0.0.9'),403)
-            self.assertEqual(get('two.test',source='127.0.0.9'),200)
-            self.assertEqual(get('one.test',address='::1'),403)
-            self.assertEqual(get('two.test',address='::1'),200)
-            lines=(self.directory/'domain-events.log').read_text()
-            self.assertIn('domain-file',lines);self.assertIn('domain-query',lines)
-            self.assertNotIn('passwd',lines)
-        finally:
-            subprocess.run([*command,'-s','quit'],capture_output=True,timeout=5)
 
     def test_global_ipv4_and_ipv6_bans_cover_both_accounts_and_aliases(self):
         with socket.socket() as probe:

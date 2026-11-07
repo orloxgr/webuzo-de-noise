@@ -2,8 +2,8 @@
 if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 
 $tabs = $isAdmin ? ['general' => 'General', 'agents' => 'User-Agents', 'endpoints' => 'Endpoints',
-    'filters' => 'Filtered URLs', 'static' => 'Static files', 'bans' => 'IP bans', 'domain-bans' => 'Domain bans',
-    'enumeration' => 'User enumeration', 'wordpress' => 'WordPress logins', 'cron' => 'Cron', 'domains' => 'Domains', 'activity' => 'Activity'] : ['domain-bans' => 'Domain bans', 'domains' => 'Domains', 'activity' => 'Activity'];
+    'filters' => 'Filtered URLs', 'static' => 'Static files', 'bans' => 'IP bans',
+    'enumeration' => 'User enumeration', 'cron' => 'Cron', 'fail2ban' => 'Fail2ban', 'activity' => 'Activity'] : ['domains' => 'Domains', 'activity' => 'Activity'];
 $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs);
 ?>
 <script>document.title = 'De-Noise';</script>
@@ -12,7 +12,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <a class="button button-secondary" href="index.php"><i class="fas fa-arrow-left icon-blue"></i>Back</a>
     <?php if ($isAdmin): ?>
     <form method="post"><?php $fields('sync'); ?><button class="button button-secondary" type="submit">Synchronize now</button></form>
-    <form method="post"><?php $fields('disable'); ?><button class="button button-secondary" type="submit">Disable everywhere</button></form>
+    <form method="post"><?php $fields('disable'); ?><button class="button button-secondary" type="submit">Disable website protection</button></form>
     <?php endif; ?>
 </div></div></div>
 <div class="container" id="hdn-container"><div class="form-container form-container-wide">
@@ -43,7 +43,8 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <p>Environment files, source-control metadata, configuration backups, cloud credentials and operating-system secret paths.</p>
     <label class="form-label u-block u-mt20"><input form="hdn-settings" type="checkbox" name="mail_protection" <?= !empty($policy['mail_protection']) ? 'checked' : '' ?> title="Apply the User-Agent lists and private-file protection to the native panel /mail/ route. SMTP, IMAP and other panel pages keep their existing behavior."> Protect webmail HTTP</label>
     <label class="form-label u-block u-mt20"><input form="hdn-settings" type="checkbox" name="log_rejections" <?= !empty($policy['log_rejections']) ? 'checked' : '' ?> title="Also record expected rate-limit rejections at error level in domain error logs. When off, they use notice level; Activity still records matches and genuine errors keep normal logging."> Detailed rate-limit messages in error logs</label>
-    <label class="form-label u-block u-mt20"><input form="hdn-settings" type="checkbox" name="allow_domain_bans" <?= !array_key_exists('domain_bans', $policy) || !empty($policy['domain_bans']['allow_users']) ? 'checked' : '' ?>> Allow domain owners to edit their additional domain-only automatic bans</label>
+    <button form="hdn-settings" id="hdn-general-save" class="button u-mt20 u-mb20" type="submit"><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button>
+    <?php require $install . '/panel/domains.php'; ?>
 <?php elseif ($key === 'agents'): ?>
     <h2 class="u-mb20">User-Agent lists</h2>
     <p class="u-mb20">One literal substring per line. Case-insensitive. Each list has its own switch.</p>
@@ -77,14 +78,12 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <?php $ruleModule = $key; require $install . '/panel/rules.php'; unset($ruleModule); ?>
 <?php elseif ($key === 'bans'): ?>
     <?php require $install . '/panel/bans.php'; ?>
-<?php elseif ($key === 'wordpress'): ?>
-    <?php require $install . '/panel/wordpress.php'; ?>
+<?php elseif ($key === 'fail2ban'): ?>
+    <?php require $install . '/panel/fail2ban.php'; ?>
 <?php elseif ($key === 'enumeration'): ?>
     <?php require $install . '/panel/enumeration.php'; ?>
 <?php elseif ($key === 'cron'): ?>
     <?php require $install . '/panel/cron.php'; ?>
-<?php elseif ($key === 'domain-bans'): ?>
-    <?php require $install . '/panel/domain-bans.php'; ?>
 <?php elseif ($key === 'domains'): ?>
     <?php require $install . '/panel/domains.php'; ?>
 <?php elseif ($key === 'activity'): ?>
@@ -93,10 +92,10 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 </div>
 <?php endforeach; ?>
 </div>
-<?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['cron', 'domain-bans', 'wordpress'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
+<?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['general', 'cron', 'fail2ban', 'activity'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
 <p class="u-mt20"><small>Version <?= $escape($meta['version']) ?></small></p>
 </div></div>
 <script type="application/json" id="hdn-agent-presets"><?= json_encode(array_map(static fn($category) => $category['entries'], $data['presets']['agent_categories'] ?? []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script type="application/json" id="hdn-probe-presets"><?= json_encode(['probe_files' => $data['presets']['probe_files'] ?? [], 'probe_queries' => $data['presets']['probe_queries'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script><?php readfile($install . '/panel/settings.js'); ?></script>
-<?php if ($isAdmin): ?><script><?php readfile($install . '/panel/rules.js'); ?></script><?php endif; ?>
+<?php if ($isAdmin): ?><script><?php readfile($install . '/panel/rules.js'); ?></script><script><?php readfile($install . '/panel/fail2ban.js'); ?></script><?php endif; ?>

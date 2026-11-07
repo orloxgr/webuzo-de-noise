@@ -1,7 +1,7 @@
 {
   "name": "Webuzo De-Noise",
-  "version": "0.2.2",
-  "description": "Request filtering and traffic analysis for Webuzo.",
+  "version": "0.3.0",
+  "description": "Request filtering, traffic analysis and login protection for Webuzo.",
   "author": "Byron Iniotakis",
   "url": "https://github.com/orloxgr/webuzo-de-noise"
 }

@@ -154,7 +154,7 @@ class WordPressTests(unittest.TestCase):
                 with self.assertRaises(PermissionError):
                     engine.authorize({'actor': 'alice', 'owner': 'alice', 'action': action})
 
-    def test_http_disable_runs_even_if_optional_fail2ban_change_fails(self):
+    def test_http_disable_does_not_change_authentication_protection(self):
         from policy import DEFAULT
         with patch.object(engine, 'authorize', return_value=(True, 'admin')), \
                 patch.object(engine, 'load', return_value=copy.deepcopy(DEFAULT)), \
@@ -162,9 +162,10 @@ class WordPressTests(unittest.TestCase):
                 patch.object(engine, 'apply') as http_apply, \
                 patch.object(wordpress, 'read_json', return_value={}), \
                 patch.object(wordpress, 'settings', return_value=wordpress.DEFAULT), \
-                patch.object(wordpress, 'apply', side_effect=RuntimeError('Fail2ban unavailable')):
-            with self.assertRaisesRegex(RuntimeError, 'Fail2ban unavailable'):
-                engine.dispatch({'actor': 'admin', 'owner': 'admin', 'action': 'disable'})
+                patch.object(wordpress, 'apply', side_effect=AssertionError('Must not change authentication jails')) as authentication, \
+                patch.object(engine, 'snapshot', return_value={}):
+            engine.dispatch({'actor': 'admin', 'owner': 'admin', 'action': 'disable'})
+            authentication.assert_not_called()
         self.assertEqual(http_apply.call_args.args[0]['mode'], 'off')
 
     def test_longer_administrator_history_retention_is_never_reduced(self):

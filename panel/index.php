@@ -3,7 +3,7 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 
 // Rendered only by the authenticated native Webuzo plugin action.
 $listing = [];
-foreach (['bans', 'domain'] as $scope) {
+foreach (['bans'] as $scope) {
     $pageValue = $_POST[$scope . '_page'] ?? $_GET[$scope . '_page'] ?? 1;
     $viewValue = $_POST[$scope . '_view'] ?? $_GET[$scope . '_view'] ?? 'active';
     $listing[$scope . '_page'] = filter_var($pageValue, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
@@ -13,13 +13,22 @@ $statusRequest = ['actor' => $actor, 'owner' => $owner, 'action' => 'status', 'l
 $listing['wordpress_page'] = filter_var($_POST['wordpress_target_page'] ?? $_POST['wordpress_page'] ?? $_GET['wordpress_page'] ?? 1,
     FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) ?: 1;
 $statusRequest['listing'] = $listing;
+$selectedTab = $_POST['tab'] ?? $_GET['tab'] ?? 'general';
+$activeTab = is_string($selectedTab) ? $selectedTab : 'general';
+$fields = static function (string $action) use ($escape, $activeTab, $listing, $csrf): void {
+    echo '<input type="hidden" name="token" value="' . $escape($csrf) . '">';
+    echo '<input type="hidden" name="action" value="' . $escape($action) . '">';
+    echo '<input type="hidden" name="tab" value="' . $escape($activeTab) . '">';
+    foreach ($listing as $key => $value) echo '<input type="hidden" name="' . $escape($key) . '" value="' . $escape($value) . '">';
+};
 $error = '';
 $message = '';
 $submitted = null;
 $wordpressResult = null;
 $analysisResult = null;
+$fail2banResult = [];
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    if ((!$isAdmin && !in_array($_POST['action'] ?? '', ['domain_bans_save', 'history_clear', 'activity_start', 'activity_status', 'activity_cancel'], true)) || !empty($read_only) || !is_string($_POST['token'] ?? null) ||
+    if ((!$isAdmin && !in_array($_POST['action'] ?? '', ['activity_start', 'activity_status', 'activity_cancel'], true)) || !empty($read_only) || !is_string($_POST['token'] ?? null) ||
         !hash_equals($csrf, $_POST['token'])) {
         $error = 'Write access and a valid request token are required.';
     } else {
@@ -27,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($request['action'] === 'save') {
             $agents = is_string($_POST['agents'] ?? null) ? preg_split('/\r\n|\r|\n/', trim($_POST['agents'])) : [];
             $tools = is_string($_POST['tool_agents'] ?? null) ? preg_split('/\r\n|\r|\n/', trim($_POST['tool_agents'])) : [];
-            $submitted = ['schema' => 10, 'mode' => $_POST['mode'] ?? '', 'agents' => array_values(array_filter($agents, static fn($line) => trim($line) !== '')),
+            $submitted = ['schema' => 11, 'mode' => $_POST['mode'] ?? '', 'agents' => array_values(array_filter($agents, static fn($line) => trim($line) !== '')),
                 'log_rejections' => isset($_POST['log_rejections']), 'mail_protection' => isset($_POST['mail_protection']),
                 'tool_agents' => array_values(array_filter($tools, static fn($line) => trim($line) !== '')),
                 'agents_enabled' => isset($_POST['agents_enabled']), 'tool_agents_enabled' => isset($_POST['tool_agents_enabled']),
@@ -41,7 +50,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'rest' => isset($_POST['enumeration_rest']), 'author_ids' => isset($_POST['enumeration_author_ids']),
                 'author_archives' => isset($_POST['enumeration_author_archives']),
                 'targets' => $_POST['enumeration_targets'] ?? []];
-            $submitted['domain_bans'] = ['allow_users' => isset($_POST['allow_domain_bans']), 'sites' => (object)[]];
             foreach (['login', 'xmlrpc'] as $key) {
                 $submitted[$key] = ['enabled' => isset($_POST[$key . '_enabled']),
                     'rate' => filter_var($_POST[$key . '_rate'] ?? '', FILTER_VALIDATE_INT),
@@ -128,6 +136,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $request['scope'] = $_POST['history_scope'] ?? '';
         } elseif ($request['action'] === 'history_settings_save') {
             $request['days'] = filter_var($_POST['history_days'] ?? '', FILTER_VALIDATE_INT);
+        } elseif ($request['action'] === 'fail2ban_save') {
+            $request['settings'] = [];
+            $values = $_POST['services'] ?? [];
+            if (!is_array($values) || array_diff(array_keys($values), ['ssh', 'imap', 'smtp', 'ftp'])) { $request['settings'] = false; }
+            else foreach (['ssh', 'imap', 'smtp', 'ftp'] as $service) {
+                $row = $values[$service] ?? [];
+                if (!is_array($row) || !is_string($row['ignore_ips'] ?? null)) { $request['settings'] = false; break; }
+                $request['settings'][$service] = ['enabled' => isset($row['enabled']),
+                    'maxretry' => filter_var($row['maxretry'] ?? '', FILTER_VALIDATE_INT),
+                    'findtime' => filter_var($row['findtime'] ?? '', FILTER_VALIDATE_INT),
+                    'bantime' => filter_var($row['bantime'] ?? '', FILTER_VALIDATE_INT),
+                    'ignore_ips' => array_values(array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $row['ignore_ips'])), static fn($v) => $v !== ''))];
+            }
+        } elseif (in_array($request['action'], ['fail2ban_test', 'fail2ban_unban'], true)) {
+            $request['service'] = $_POST['service'] ?? '';
+            if ($request['action'] === 'fail2ban_unban') $request['ips'] = $_POST['service_ips'] ?? [];
+        } elseif ($request['action'] === 'fail2ban_install_start') {
+            $request['plan_token'] = $_POST['plan_token'] ?? '';
         } elseif ($request['action'] === 'wordpress_save') {
             $integer = static fn($key) => filter_var($_POST[$key] ?? '', FILTER_VALIDATE_INT);
             $third = $integer('wordpress_third_days');
@@ -150,21 +176,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $request['plan_id'] = $_POST['plan_id'] ?? '';
             $request['jobs'] = $_POST['cron_jobs'] ?? [];
             $request['restore'] = isset($_POST['restore_cron']);
-        } elseif ($request['action'] === 'domain_bans_save') {
-            $request['preferences'] = [];
-            if (!is_array($_POST['domain_preferences'] ?? null)) { $request['preferences'] = false; }
-            else foreach ($_POST['domain_preferences'] as $site => $flags) {
-                if (!is_array($flags) || array_diff(array_keys($flags), ['present', 'missing_files', 'suspicious_queries', 'any_404'])) {
-                    $request['preferences'] = false; break;
-                }
-                $request['preferences'][$site] = ['missing_files' => isset($flags['missing_files']), 'suspicious_queries' => isset($flags['suspicious_queries']), 'any_404' => isset($flags['any_404'])];
-            }
-            if (is_array($request['preferences'])) $request['preferences'] = (object)$request['preferences'];
         }
-        if (!in_array($request['action'], ['save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'domain_bans_save', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
+        if (!in_array($request['action'], ['fail2ban_status', 'fail2ban_start', 'fail2ban_save', 'fail2ban_test', 'fail2ban_unban', 'fail2ban_install_preview', 'fail2ban_install_start', 'fail2ban_install_status', 'save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'php_files_start', 'php_files_status', 'php_files_cancel'], true)) {
             $error = 'Unsupported operation.';
         } else {
-            $isReview = strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0;
+            $isReview = strpos($request['action'], 'fail2ban_') === 0 || strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0;
             $result = $bridge($request);
             if ($isReview && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ?? '') === '1') {
                 if (!empty($result['job']['analysis'])) {
@@ -176,23 +192,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $result['report'] = ob_get_clean();
                     unset($result['job']['analysis']);
                 }
+                if (!empty($result['ok']) && $request['action'] === 'fail2ban_status') {
+                    $data = $result;
+                    ob_start(); require $install . '/panel/fail2ban.php'; $result['report'] = ob_get_clean();
+                }
                 header('Content-Type: application/json; charset=utf-8');
                 header('Cache-Control: private, no-store');
                 if (empty($result['ok'])) http_response_code(400);
                 echo json_encode($result, JSON_THROW_ON_ERROR); exit;
             }
+            foreach (['fail2ban', 'install_job', 'install_plan', 'filter_test', 'service_result'] as $key) if (isset($result[$key])) $fail2banResult[$key] = $result[$key];
             if (isset($result['wordpress'])) $wordpressResult = $result['wordpress'];
             if ($request['action'] === 'log_scan' && !empty($result['ok'])) $analysisResult = $result['analysis'] ?? null;
             if (empty($result['ok'])) $error = $result['error'] ?? 'The operation failed.';
             elseif ($request['action'] === 'history_clear') $message = 'Completed ban history cleared. Active bans and strike counters are unchanged.';
             elseif ($request['action'] === 'history_settings_save') $message = 'History retention saved.';
             elseif ($request['action'] === 'log_scan') $message = 'Log review completed. Suggestions only; no protection settings or bans were changed.';
+            elseif (strpos($request['action'], 'fail2ban_') === 0) $message = ['fail2ban_save' => 'Service protection applied.', 'fail2ban_test' => 'Filter test completed; no protection settings changed.', 'fail2ban_unban' => 'Selected service bans removed.', 'fail2ban_install_preview' => 'Installation preview ready; no packages changed.', 'fail2ban_install_start' => 'Fail2ban installation started.'][$request['action']] ?? 'Fail2ban status refreshed.';
             elseif (strpos($request['action'], 'wordpress_') === 0) $message = [
                 'wordpress_save' => 'WordPress login protection applied through Fail2ban.',
                 'wordpress_unban' => 'Selected WordPress IP bans removed.',
             ][$request['action']] ?? 'WordPress login protection status refreshed.';
-            else $message = $request['action'] === 'domain_bans_save' ? 'Domain protection saved. Automatic bans synchronize within about one minute.' :
-                ($request['action'] === 'cron_preview' ? 'Cron preview generated. No schedule has changed.' :
+            else $message =                 ($request['action'] === 'cron_preview' ? 'Cron preview generated. No schedule has changed.' :
                 ($request['action'] === 'cron_apply' ? 'Selected cron schedules updated through Webuzo.' :
                 ($request['action'] === 'disable' ? 'De-Noise is off for every domain. Its web bans will be released by synchronization.' :
                 ($request['action'] === 'unban' ? 'Unban requested. Check the active and pending counts.' : 'Settings applied. Automatic bans synchronize within about one minute.'))));
@@ -206,18 +227,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ??
     echo json_encode(['ok' => false, 'error' => $error ?: 'Review request rejected.']); exit;
 }
 $data = $bridge($statusRequest);
+foreach ($fail2banResult as $key => $value) $data[$key] = $value;
 if ($wordpressResult !== null) $data['wordpress'] = $wordpressResult;
 if ($isAdmin && $analysisResult !== null) $data['analysis'] = $analysisResult;
 if (empty($data['ok'])) $error = $error ?: ($data['error'] ?? 'Could not load De-Noise.');
 // When impersonating a user, render the user's scope even for an admin session.
 if (!$isAdmin) $data['sites'] = array_values(array_filter($data['sites'] ?? [], static fn($site) => $site['owner'] === $owner));
 $policy = $error !== '' && $submitted !== null ? $submitted : ($data['policy'] ?? []);
-$selectedTab = $_POST['tab'] ?? $_GET['tab'] ?? 'general';
-$activeTab = is_string($selectedTab) ? $selectedTab : 'general';
-$fields = static function (string $action) use ($escape, $activeTab, $listing, $csrf): void {
-    echo '<input type="hidden" name="token" value="' . $escape($csrf) . '">';
-    echo '<input type="hidden" name="action" value="' . $escape($action) . '">';
-    echo '<input type="hidden" name="tab" value="' . $escape($activeTab) . '">';
-    foreach ($listing as $key => $value) echo '<input type="hidden" name="' . $escape($key) . '" value="' . $escape($value) . '">';
-};
 require $install . '/panel/view.php';

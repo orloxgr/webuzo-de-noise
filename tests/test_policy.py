@@ -17,14 +17,14 @@ class PolicyTests(unittest.TestCase):
         self.assertFalse(saved['bans']['any_404']['enabled'])
         self.assertEqual(saved['bans']['any_404']['maxretry'],10)
         self.assertEqual(saved['bans']['any_404']['findtime'],300)
-        self.assertFalse(saved['domain_bans']['sites']['alice/example.test']['any_404'])
+        self.assertNotIn('domain_bans',saved)
         old['bans']['missing_files']['paths']=['/custom.php']
         self.assertEqual(validate(old)['bans']['missing_files']['paths'],['/custom.php'])
         saved['bans']['any_404']['maxretry']=False
         with self.assertRaises(ValueError):validate(saved)
 
     def test_v4_upgrade_preserves_existing_bans_and_does_not_enable_new_categories(self):
-        old = {key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS}
+        old = {key: copy.deepcopy(DEFAULT[key]) if key in DEFAULT else {'allow_users':True,'sites':{}} for key in V9_KEYS}
         old['schema'] = 4
         old.pop('enumeration')
         old.pop('probe_exceptions')
@@ -32,7 +32,7 @@ class PolicyTests(unittest.TestCase):
         for key in ('missing_files', 'suspicious_queries', 'any_404'): old['bans'].pop(key)
         old['bans'].update(enabled=True, maxretry=1, duration_days=0)
         saved = validate(old)
-        self.assertEqual(saved['schema'], 10)
+        self.assertEqual(saved['schema'], 11)
         self.assertEqual(saved['bans']['duration_days'], 0)
         for key in ('missing_files', 'suspicious_queries'):
             self.assertFalse(saved['bans'][key]['enabled'])

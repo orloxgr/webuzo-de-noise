@@ -10,7 +10,6 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import auto_bans
-import domain_bans
 import not_found
 from policy import DEFAULT
 from test_auto_bans import FakeNative
@@ -48,9 +47,8 @@ class General404Tests(unittest.TestCase):
     def sync(self, now=1001):
         return auto_bans.synchronize(self.policy, self.sites, self.root, self.native, now)
 
-    def test_static_exclusion_protects_images_in_native_and_early_global_and_domain_counters(self):
+    def test_static_exclusion_protects_images_in_native_and_early_global_counters(self):
         self.policy['bans']['any_404']['exclude_static'] = True
-        self.policy['domain_bans']['sites'] = {'alice/one.test':dict(missing_files=False,suspicious_queries=False,any_404=True)}
         for suffix in ('jpg', 'png', 'webp', 'svgz', 'jxl', 'heic', 'heif'):
             for index in range(20):
                 self.event(request=f'GET /uploads/missing{index}.{suffix} HTTP/1.1')
@@ -59,8 +57,6 @@ class General404Tests(unittest.TestCase):
                 out.write(json.dumps(dict(v=1,ts='1000',ip='198.51.100.7',domain='one.test',reason='not-found',
                     token='-',path=f'/uploads/early{index}.webp',method='GET'))+'\n')
         self.assertEqual(self.sync()['active'], 0)
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1001)
-        self.assertEqual(domain_bans.desired(self.policy,self.sites,self.root,1001), {})
 
     def test_ten_final_404s_across_domains_ban_once_and_expire_in_three_days(self):
         for _ in range(9): self.event()
@@ -118,43 +114,8 @@ class General404Tests(unittest.TestCase):
         self.assertEqual(result['active'], 1)
         self.assertEqual(result['rows'][0]['diagnostics']['count'], 2)
 
-    def test_complete_native_logging_does_not_double_count_owner_scoped_404s(self):
-        self.sites[0]['native_access_logging'] = True
-        self.policy['bans']['enabled'] = False
-        self.policy['bans']['any_404']['maxretry'] = 2
-        self.policy['domain_bans']['sites'] = {'alice/one.test': dict(missing_files=False, suspicious_queries=False, any_404=True)}
-        self.event(request='GET /missing-one HTTP/1.1')
-        with self.log.open('a') as out:
-            out.write(json.dumps(dict(v=1, ts='1000', ip='198.51.100.7', domain='one.test', reason='not-found', token='-', path='/missing-one', method='GET')) + '\n')
-        domain_bans.synchronize(self.policy, self.sites, self.root, self.native, 1001)
-        self.assertEqual(domain_bans.desired(self.policy, self.sites, self.root, 1001), {})
-        self.event(stamp=1002, request='GET /missing-two HTTP/1.1')
-        domain_bans.synchronize(self.policy, self.sites, self.root, self.native, 1003)
-        self.assertIn('alice/one.test', domain_bans.desired(self.policy, self.sites, self.root, 1003))
 
-    def test_owner_scope_accepts_ipv6_and_cannot_block_another_domain(self):
-        self.policy['bans']['enabled'] = False
-        self.policy['domain_bans']['sites'] = {'alice/one.test':dict(missing_files=False,suspicious_queries=False,any_404=True)}
-        for _ in range(9): self.event(ip='2001:db8::7')
-        for _ in range(10): self.event(host='two.test',ip='2001:db8::7')
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1001)
-        self.assertEqual(domain_bans.desired(self.policy,self.sites,self.root,1001),{})
-        self.event(stamp=1002,ip='2001:db8::7')
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1003)
-        result = domain_bans.desired(self.policy,self.sites,self.root,1003)
-        self.assertEqual(set(result), {'alice/one.test'})
-        self.assertEqual(result['alice/one.test']['2001:db8::7']['reason'],'domain-404')
-        self.assertEqual(self.native.calls, [])
 
-    def test_one_owner_changing_switches_does_not_reset_another_domain_counter(self):
-        self.policy['bans']['enabled']=False
-        self.policy['domain_bans']['sites']={site['key']:dict(missing_files=False,suspicious_queries=False,any_404=True) for site in self.sites}
-        for _ in range(9):self.event(host='two.test')
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1001)
-        self.policy['domain_bans']['sites']['alice/one.test']['any_404']=False
-        self.event(host='two.test',stamp=1002)
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1003)
-        self.assertIn('bob/two.test',domain_bans.desired(self.policy,self.sites,self.root,1003))
 
     def test_unsafe_native_log_is_refused(self):
         target=self.root/'foreign'; target.write_text('')

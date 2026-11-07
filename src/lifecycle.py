@@ -7,6 +7,7 @@ import stat
 import sys
 import pwd
 import shlex
+import hashlib
 
 sys.dont_write_bytecode = True
 sys.pycache_prefix = str(Path(__file__).resolve().parent / '.bytecode')
@@ -16,6 +17,7 @@ import storage
 import webuzo
 import transport
 import wordpress
+import host_protection
 
 LOGS = Path('/var/log/webuzo-de-noise')
 CONFIG = Path('/etc/webuzo-de-noise')
@@ -24,6 +26,30 @@ CRON = Path('/etc/cron.d/webuzo-de-noise')
 ROTATE = Path('/etc/logrotate.d/webuzo-de-noise')
 TMPFILES = Path('/etc/tmpfiles.d/webuzo-de-noise.conf')
 HEADER = b'# Managed by webuzo-de-noise\n'
+SOURCE = Path(__file__).resolve().parents[1]
+OBSOLETE_SOURCE = {
+    'src/domain_bans.py': 'a0cf2c19cd79443dd2da0f101fa79f1fe6c84d1997cbc8cc22d753cd5db07c03',
+    'panel/domain-bans.php': '6f5ef6577aff318fc133706f75a83a5f0cccc3cbdcb5ba3a57e6a81ff6640cba',
+}
+
+
+def retire_source():
+    """Native ZIP updates merge directories; remove only exact retired source."""
+    result = {'removed': [], 'preserved': []}
+    for relative, digest in OBSOLETE_SOURCE.items():
+        path = SOURCE / relative
+        try:
+            raw = storage.read(path)
+            if raw is None:
+                continue
+            if hashlib.sha256(raw.replace(b'\r\n', b'\n')).hexdigest() != digest:
+                result['preserved'].append(relative)
+                continue
+            storage.replace(path, None)
+            result['removed'].append(relative)
+        except (OSError, ValueError):
+            result['preserved'].append(relative)
+    return result
 
 
 def directory(path, mode):
@@ -99,6 +125,7 @@ def install():
         before[path] = previous
     with engine.locked():
         engine.recover()
+        host_protection.recover(webuzo.STATE, webuzo.run)
         previous_active = engine.load('active.json', None)
         sites = engine.collect()
         policy = engine.validate(engine.load('policy.json', engine.DEFAULT))
@@ -115,14 +142,18 @@ def install():
             if not previous_active or previous_active.get('active') is not True:
                 engine.apply(policy, sites, remove=True)
             raise
-    return {'ok': True, **result}
+        retired = retire_source()
+    return {'ok': True, 'retired_source': retired, **result}
 
 
 def remove():
     if not webuzo.STATE.exists():
         return {'ok': True, 'state': 'disabled'}
     with engine.locked():
+        if engine.f2b_install.status(webuzo.STATE)['state'] in ('queued', 'running'):
+            raise ValueError('Wait for the Fail2ban package installation to finish before deactivating De-Noise')
         engine.recover()
+        host_protection.uninstall(webuzo.STATE, webuzo.run)
         policy = engine.validate(engine.load('policy.json', engine.DEFAULT))
         preference = wordpress.read_json(webuzo.STATE, wordpress.SETTINGS)
         wordpress.uninstall(webuzo.STATE, webuzo.run)

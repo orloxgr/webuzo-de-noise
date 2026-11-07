@@ -234,10 +234,10 @@
                 document.getElementById(tab.getAttribute('aria-controls')).hidden = !selected;
             });
             const save = document.getElementById('hdn-save');
-            if (save) save.hidden = ['cron', 'domain-bans', 'wordpress'].includes(button.dataset.hdnTab);
+            if (save) save.hidden = ['general', 'cron', 'fail2ban', 'activity'].includes(button.dataset.hdnTab);
             document.querySelectorAll('input[name="tab"]').forEach(input => { input.value = button.dataset.hdnTab; });
-            if (button.dataset.hdnTab === 'wordpress' && document.getElementById('hdn-wordpress-status')?.dataset.loaded === 'false') {
-                document.getElementById('hdn-wordpress-refresh')?.requestSubmit();
+            if (button.dataset.hdnTab === 'fail2ban' && document.getElementById('hdn-fail2ban-status')?.dataset.loaded === 'false') {
+                document.getElementById('hdn-fail2ban-refresh')?.requestSubmit();
             }
         });
         button.addEventListener('keydown', event => {

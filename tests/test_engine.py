@@ -130,20 +130,18 @@ class AuthorizationTests(unittest.TestCase):
     def setUp(self):
         self.enterContext(patch.object(engine.ban_history, 'settings', return_value={'days': 30}))
 
-    def test_stale_v6_save_preserves_general_404_and_domain_switches(self):
+    def test_stale_v6_save_preserves_general_404_and_retires_domain_preferences(self):
         incoming=json.loads((Path(__file__).parent/'fixtures/policy-v6.json').read_text())
         incoming['domain_bans']['allow_users']=False
         saved=copy.deepcopy(DEFAULT)
         saved['bans']['any_404'].update(enabled=True,maxretry=13)
-        saved['domain_bans']['sites']={'alice/example.test':dict(missing_files=False,suspicious_queries=False,any_404=True)}
         with patch.object(engine,'authorize',return_value=(True,'admin')), \
              patch.object(engine,'load',return_value=saved),patch.object(engine,'collect',return_value=[]), \
              patch.object(engine,'apply') as apply,patch.object(engine,'snapshot',return_value={}):
             engine.dispatch({'actor':'admin','action':'save','policy':incoming})
             actual=apply.call_args.args[0]
             self.assertEqual(actual['bans']['any_404'],saved['bans']['any_404'])
-            self.assertEqual(actual['domain_bans']['sites'],saved['domain_bans']['sites'])
-            self.assertFalse(actual['domain_bans']['allow_users'])
+            self.assertNotIn('domain_bans',actual)
 
     def test_native_ban_failure_is_not_reported_as_a_successful_sync(self):
         with patch.object(engine, 'authorize', return_value=(True, 'admin')), \
@@ -174,7 +172,7 @@ class AuthorizationTests(unittest.TestCase):
         saved = copy.deepcopy(DEFAULT)
         saved['bans']['missing_files'].update(enabled=True, maxretry=4)
         saved['probe_exceptions']['queries'] = {'alice/example.test': ['/manager.php']}
-        incoming = {key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS}; incoming['schema'] = 4; incoming.pop('probe_exceptions'); incoming.pop('domain_bans')
+        incoming = {key: copy.deepcopy(DEFAULT[key]) if key in DEFAULT else {'allow_users':True,'sites':{}} for key in V9_KEYS}; incoming['schema'] = 4; incoming.pop('probe_exceptions'); incoming.pop('domain_bans')
         incoming.pop('enumeration')
         for key in ('missing_files', 'suspicious_queries', 'any_404'): incoming['bans'].pop(key)
         with patch.object(engine, 'authorize', return_value=(True, 'admin')), \

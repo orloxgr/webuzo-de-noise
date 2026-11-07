@@ -32,7 +32,7 @@ class Categories(unittest.TestCase):
 
     def test_v9_migration_preserves_active_substrings_and_disabled_choices(self):
         for enabled in (True, False):
-            old = {key: copy.deepcopy(policy.DEFAULT[key]) for key in policy.V9_KEYS}
+            old = {key: copy.deepcopy(policy.DEFAULT[key]) if key in policy.DEFAULT else {'allow_users':True,'sites':{}} for key in policy.V9_KEYS}
             old.update(schema=9, agents=['GPTBot', 'meta-webindexer', 'AhrefsBot',
                                         'MyCrawler', 'GoogleOther', 'Claude'], agents_enabled=enabled)
             result = policy.validate(old)

@@ -10,7 +10,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import auto_bans
 import ban_history
-import domain_bans
 import engine
 from policy import DEFAULT
 from test_auto_bans import FakeNative
@@ -26,7 +25,6 @@ class BanHistoryTests(unittest.TestCase):
         self.policy = copy.deepcopy(DEFAULT); self.policy['mode'] = 'enforce'; self.policy['bans']['enabled'] = True
         self.sites = [dict(key=owner+'/'+owner+'.test', owner=owner, domain=owner+'.test', supported=True, suspended=False)
                       for owner in ('alice','bob')]
-        self.policy['domain_bans']['sites'] = {s['key']: dict(missing_files=True,suspicious_queries=True,any_404=False) for s in self.sites}
 
     def tearDown(self):
         self.logs.stop(); self.temp.cleanup()
@@ -68,55 +66,12 @@ class BanHistoryTests(unittest.TestCase):
         for number in [0,-1,True,'1']:
             with self.assertRaises(ValueError):auto_bans.report(self.state,page=number)
 
-    def test_domain_pages_are_scoped_and_include_removal_still_applied(self):
-        with auto_bans.database(self.state) as db:
-            domain_bans.tables(db)
-            db.executemany('INSERT INTO domain_bans VALUES (?,?,?,?,?)',
-                ((owner+'/'+owner+'.test',f'198.51.100.{i}','domain-file',1000,0) for owner in ('alice','bob') for i in range(123)))
-        first=domain_bans.report(self.policy,self.sites,self.state,'alice',1002)
-        second=domain_bans.report(self.policy,self.sites,self.state,'alice',1002,page=2)
-        self.assertEqual(first['pagination']['total'],123)
-        self.assertEqual(len(first['rows']),50); self.assertEqual(len(second['rows']),50)
-        self.assertTrue(all(r['site']=='alice/alice.test' for r in first['rows']+second['rows']))
-        (self.state/domain_bans.APPLIED).write_text(json.dumps({'alice/alice.test':{'203.0.113.5':dict(reason='domain-file',created=1001,expires=0)}}))
-        self.assertEqual(domain_bans.report(self.policy,self.sites,self.state,'alice',1002)['rows'][0]['status'],'removing')
 
-    def test_domain_history_waits_for_successful_unapply_and_preserves_diagnostics(self):
-        with auto_bans.database(self.state) as db:
-            domain_bans.tables(db)
-            row=dict(site='alice/alice.test',ip='198.51.100.8',reason='domain-file',created=1000,expires=1001)
-            db.execute('INSERT INTO domain_bans VALUES (?,?,?,?,?)',tuple(row.values()))
-            details=dict(v=1,count=2,maxretry=2,findtime=60,duration_days=3,samples=[])
-            auto_bans.ban_evidence.store(db,row['ip'],1000,json.dumps(details),site=row['site'])
-        applied={row['site']:{row['ip']:{k:row[k] for k in ('reason','created','expires')}}}
-        (self.state/domain_bans.APPLIED).write_text(json.dumps(applied))
-        domain_bans.synchronize(self.policy,self.sites,self.state,self.native,1002)
-        self.assertEqual(domain_bans.report(self.policy,self.sites,self.state,'alice',1003,view='history')['rows'],[])
-        (self.state/domain_bans.APPLIED).write_text('{}')
-        domain_bans.synchronize(self.policy,self.sites,self.state,self.native,1004)
-        rows=domain_bans.report(self.policy,self.sites,self.state,'alice',1004,view='history')['rows']
-        self.assertEqual(len(rows),1);self.assertEqual(rows[0]['ended'],1004);self.assertEqual(rows[0]['diagnostics'],details)
-        self.assertEqual(self.native.calls,[])
 
-    def test_owner_clear_dispatch_is_scoped_and_never_runs_firewall_commands(self):
-        with auto_bans.database(self.state) as db:
-            for owner in ('alice','bob'):
-                db.execute('INSERT INTO ban_history (scope,scope_key,ip,domain,reason,created,expires,ended) VALUES (?,?,?,?,?,?,?,?)',
-                    ('domain',owner+'/'+owner+'.test','198.51.100.7',owner+'.test','domain-file',1000,0,1001))
-            db.execute("INSERT INTO bans VALUES ('198.51.100.8','alice.test','private-file',1000,0,'active','')")
-        with patch.object(engine,'STATE',self.state),patch.object(engine,'authorize',return_value=(False,'alice')), \
-             patch.object(engine,'load',return_value=self.policy),patch.object(engine,'collect',return_value=self.sites), \
-             patch.object(engine,'snapshot',return_value={}),patch.object(engine,'run',side_effect=AssertionError('No native command')):
-            engine.dispatch(dict(actor='alice',owner='alice',action='history_clear',scope='domain'))
-        with auto_bans.database(self.state) as db:
-            self.assertEqual(ban_history.page(db,'domain','alice')[1]['total'],0)
-            self.assertEqual(ban_history.page(db,'domain','bob')[1]['total'],1)
-            self.assertEqual(db.execute('SELECT status FROM bans').fetchone()[0],'active')
 
     def test_retention_and_clear_preserve_live_bans_counters_cursors_and_other_owners(self):
         now=4000000
         with auto_bans.database(self.state) as db:
-            domain_bans.tables(db)
             db.execute("INSERT INTO bans VALUES ('198.51.100.1','alice.test','private-file',1000,0,'active','')")
             db.execute("INSERT INTO strikes VALUES ('198.51.100.2','alice.test','not-found',3999999,'-')")
             db.execute('INSERT INTO cursors VALUES (1,2,300)')

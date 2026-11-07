@@ -12,7 +12,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import auto_bans
 import ban_evidence
-import domain_bans
 import not_found
 from policy import DEFAULT
 from test_auto_bans import FakeNative
@@ -72,18 +71,6 @@ class EvidenceLifecycleTests(unittest.TestCase):
         self.policy['bans']['any_404'].update(maxretry=9, findtime=600)
         self.assertEqual(self.sync(1003)['rows'][0]['diagnostics'], details)
 
-    def test_domain_evidence_stays_in_owner_scope_and_preserves_same_time_requests(self):
-        self.policy['bans']['enabled'] = False
-        self.policy['domain_bans']['sites'] = {s['key']:dict(missing_files=False,suspicious_queries=False,any_404=True) for s in self.sites}
-        for domain, prefix in [('one.test','/one'),('two.test','/two')]:
-            self.event(1000,domain,prefix+'/a.js.map?secret=private')
-            self.event(1000,domain,prefix+'/b.css.map?secret=private')
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1001)
-        alice=domain_bans.report(self.policy,self.sites,self.root,'alice',1001)['rows']
-        self.assertEqual(len(alice),1)
-        self.assertEqual([s['path'] for s in alice[0]['diagnostics']['samples']],['/one/a.js.map','/one/b.css.map'])
-        self.assertNotIn('/two',json.dumps(alice))
-        self.assertFalse(self.native.calls)
 
     def test_existing_bans_counters_and_log_cursors_survive_schema_upgrade(self):
         path=self.root/'bans.sqlite';db=sqlite3.connect(path)

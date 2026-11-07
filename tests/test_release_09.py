@@ -16,7 +16,6 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import activity
 import auto_bans
-import domain_bans
 import engine
 import storage
 from policy import V9_KEYS, DEFAULT, validate, global_config, site_config
@@ -28,7 +27,7 @@ import test_not_found
 
 class UpgradeTests(unittest.TestCase):
     def test_v7_keeps_custom_limits_lists_and_adds_guardrails_without_new_blocks(self):
-        old = {key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS}
+        old = {key: copy.deepcopy(DEFAULT[key]) if key in DEFAULT else {'allow_users':True,'sites':{}} for key in V9_KEYS}
         old.update(schema=7)
         old.pop('enumeration')
         old.pop('mail_protection'); old.pop('log_rejections')
@@ -36,7 +35,7 @@ class UpgradeTests(unittest.TestCase):
         old['agents'] = ['CustomBot']
         old['bans']['missing_files']['paths'] = ['/custom.php']
         new = validate(old)
-        self.assertEqual(new['schema'], 10)
+        self.assertEqual(new['schema'], 11)
         self.assertEqual(new['agents'], ['CustomBot'])
         self.assertEqual(new['bans']['missing_files']['paths'], ['/custom.php'])
         self.assertEqual(new['bans']['any_404'], {**old['bans']['any_404'], 'exclude_static':True, 'min_distinct_paths':3})
@@ -48,8 +47,8 @@ class UpgradeTests(unittest.TestCase):
         saved=copy.deepcopy(DEFAULT)
         saved.update(mail_protection=True, log_rejections=True)
         saved['bans']['any_404']['min_distinct_paths']=7
-        saved['domain_bans']['sites']={'alice/one.test':dict(missing_files=True,suspicious_queries=False,any_404=False)}
-        old={key: copy.deepcopy(DEFAULT[key]) for key in V9_KEYS};old.update(schema=7)
+        # Domain-only settings were retired.
+        old={key: copy.deepcopy(DEFAULT[key]) if key in DEFAULT else {'allow_users':True,'sites':{}} for key in V9_KEYS};old.update(schema=7)
         old.pop('enumeration')
         for key in ('mail_protection','log_rejections'):old.pop(key)
         for key in ('exclude_static','min_distinct_paths'):old['bans']['any_404'].pop(key)
@@ -59,7 +58,7 @@ class UpgradeTests(unittest.TestCase):
         result=apply.call_args.args[0]
         self.assertTrue(result['mail_protection']);self.assertTrue(result['log_rejections'])
         self.assertEqual(result['bans']['any_404']['min_distinct_paths'],7)
-        self.assertEqual(result['domain_bans'],saved['domain_bans'])
+        self.assertNotIn('domain_bans',result)
 
 
 @unittest.skipUnless(os.name=='posix' and os.geteuid()==0,'Linux root-owned storage')
@@ -67,14 +66,14 @@ class HealthTests(unittest.TestCase):
     def test_failure_before_firewall_sync_is_reported_then_cleared_on_success(self):
         with tempfile.TemporaryDirectory() as temp,patch.object(engine,'STATE',Path(temp)):
             storage.replace(Path(temp)/'maintenance.json',storage.json_bytes(dict(last_success=123)),0o600)
-            with patch.object(engine.domain_bans,'synchronize',side_effect=ValueError('untrusted log')), \
+            with patch.object(engine,'apply',side_effect=ValueError('untrusted log')), \
                  patch.object(engine.auto_bans,'synchronize') as firewall:
                 with self.assertRaisesRegex(ValueError,'untrusted log'):engine.synchronize(DEFAULT,[])
                 firewall.assert_not_called()
             failed=json.loads(storage.read(Path(temp)/'maintenance.json'))
             self.assertEqual(failed['last_success'],123)
             self.assertEqual(failed['error'],'untrusted log')
-            with patch.object(engine.domain_bans,'synchronize'),patch.object(engine,'apply',return_value={}), \
+            with patch.object(engine,'apply',return_value={}), \
                  patch.object(engine.auto_bans,'synchronize',return_value={'error':''}):
                 engine.synchronize(DEFAULT,[])
             success=json.loads(storage.read(Path(temp)/'maintenance.json'))
@@ -189,16 +188,3 @@ class GuardrailTests(unittest.TestCase):
         self.assertEqual(self.sync(1003)['active'],0)
         self.event(request='GET /missing3 HTTP/1.1',stamp=1004)
         self.assertEqual(self.sync(1005)['active'],1)
-
-    def test_domain_bans_use_same_asset_exclusion_and_diversity(self):
-        self.policy['bans']['enabled']=False
-        self.policy['bans']['any_404'].update(exclude_static=True,min_distinct_paths=3,maxretry=3)
-        self.policy['domain_bans']['sites']={'alice/one.test':dict(missing_files=False,suspicious_queries=False,any_404=True)}
-        for _ in range(10):self.event(request='GET /logo.jpg HTTP/1.1')
-        for path in ['/bad','/bad2']:
-            self.event(request='GET '+path+' HTTP/1.1')
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1001)
-        self.assertEqual(domain_bans.desired(self.policy,self.sites,self.root,1001),{})
-        self.event(request='GET /bad3 HTTP/1.1',stamp=1002)
-        domain_bans.synchronize(self.policy,self.sites,self.root,self.native,1003)
-        self.assertIn('alice/one.test',domain_bans.desired(self.policy,self.sites,self.root,1003))

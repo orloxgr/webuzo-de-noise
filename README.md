@@ -14,7 +14,7 @@ to Webuzo.
   missing-static-file rules.
 - On-demand agent hit counts and PHP-path 404 counts by domain and time window,
   with selectable append to the editable lists.
-- Global website IP bans and domain-only bans, with editable thresholds,
+- Global website IP bans, with editable thresholds,
   durations, exclusions, evidence, history and unban controls.
 - Optional WordPress user-enumeration protection and failed-login bans.
 - HTTP webmail protection, on-demand activity/log analysis, crawler verification
@@ -23,11 +23,12 @@ to Webuzo.
   restricted to the account's own domains.
 
 Global website IP bans reject HTTP/HTTPS requests across hosted websites.
-WordPress failed-login bans use Fail2ban on the web ports.
+WordPress failed-login bans use Fail2ban on the web ports. Optional service jails
+protect SSH, mailbox authentication, SMTP authentication and FTP on their detected ports.
 
 ## Install
 
-1. Download `webuzo-de-noise-0.2.2.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
+1. Download `webuzo-de-noise-0.3.0.zip` from [Releases](https://github.com/orloxgr/webuzo-de-noise/releases).
 2. In the Webuzo administrator panel, open **Plugins → Installed Plugins**, upload
    the ZIP and activate **Webuzo De-Noise**.
 3. Open **De-Noise**. New installations start in **Observe**, with empty blocklists.
@@ -43,12 +44,57 @@ entries, list switches, thresholds and exceptions. The analyses run in the
 background, support cancellation and resume, and paginate the complete results.
 
 Enable the other protections as needed. Domain owners open **Security → De-Noise**
-in their account panel for their domain bans, domains and activity.
+in their account panel to view their domains and activity. All protection settings
+are managed by the hosting administrator.
 
 Upload a newer ZIP through the same plugin manager to update. Settings are
 preserved. Deactivate the plugin before removing its source directory; deactivation
 removes its filtering rules and scheduled maintenance while retaining settings
 and history for reactivation.
+
+## Domains and Fail2ban
+
+**General** contains the server defaults and **Save & Apply**, followed by
+**Domains** with its separate **Apply to selected** control. Domains inherit the
+server mode unless the administrator selects an override. Central rules apply
+according to their configured targets; domain owners cannot change them.
+
+Open **Fail2ban** and choose **Refresh service status** to detect the installation,
+existing jails, listening ports and authentication log sources. SSH, Dovecot,
+Exim and PureFTPd have separate opt-in controls for attempts, counting windows,
+ban durations and never-ban networks. Existing matching jails are reported and
+left under their existing management; De-Noise does not create duplicates.
+Active CSF/LFD/BFD services are reported for review. After changing service ports
+or logging elsewhere, refresh status and Save & Apply again to update the owned
+jails.
+
+If Fail2ban is missing, **Preview Fail2ban installation** shows the package plan.
+**Install Fail2ban & start service** installs the reviewed package and dependencies
+from authenticated Debian or Ubuntu repositories and enables the system service.
+The automatic installer also requires the distribution `python3-apt` package
+for repository verification. No repository is added. Other distributions require manual installation of their
+OS Fail2ban package. Installation progress runs in the background and can be
+checked after returning to the page. Distribution defaults can already enable
+SSH protection; De-Noise service jails stay off until explicitly saved.
+
+**Test filter against recent logs** checks a bounded recent sample using the
+installed native Fail2ban filter. Saving enabled service protection repeats this
+test, validates the configuration, reloads Fail2ban and verifies the requested
+jails are active. Failed changes restore the previous configuration. Zero sample
+matches can mean no failed logins have been recorded; generate a controlled
+failed login to verify a new log source. Exim and Dovecot use normal authentication
+filters, excluding aggressive connection/spam-rejection rules. A plugin-owned
+Dovecot filter extends the native filter for explicit Dovecot 2.4 `auth_failed`
+messages; distribution filters are preserved.
+
+Only the detected TCP service ports are blocked. Loopback and inherited Fail2ban
+exclusions remain exempt. Add administrator IPs to the SSH exemptions before
+enabling a new SSH jail. **Disable website protection** leaves authentication
+jails active; disable those separately in **Fail2ban**. Deactivation removes only
+De-Noise-owned jails, leaving the Fail2ban package, service and unrelated jails.
+
+The former additional domain-only automatic-ban feature has been removed.
+Upgrading drops its rules and stored bans; central website protections remain.
 
 ## WordPress user-enumeration protection
 

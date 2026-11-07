@@ -1,5 +1,6 @@
 """Native plugin lifecycle using owned temporary configuration destinations."""
 import contextlib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -86,3 +87,27 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse(installer.TMPFILES.exists())
         self.assertEqual(neighbor.read_text(), 'keep')
         self.assertFalse(json.loads((self.state / 'active.json').read_text())['active'])
+
+    def test_upgrade_removes_only_exact_retired_source_and_preserves_custom_files(self):
+        source = self.root / 'source'; (source / 'src').mkdir(parents=True)
+        (source / 'panel').mkdir()
+        old = b'# retired bundled source\n'
+        expected = {name: hashlib.sha256(old).hexdigest() for name in installer.OBSOLETE_SOURCE}
+        (source / 'src/domain_bans.py').write_bytes(old.replace(b'\n', b'\r\n'))
+        (source / 'panel/domain-bans.php').write_bytes(b'# administrator-customized file\n')
+        neighbor = source / 'src/neighbor.py'; neighbor.write_bytes(b'keep')
+        with patch.object(installer, 'SOURCE', source), patch.object(installer, 'OBSOLETE_SOURCE', expected):
+            result = installer.retire_source()
+        self.assertEqual(result, dict(removed=['src/domain_bans.py'], preserved=['panel/domain-bans.php']))
+        self.assertFalse((source / 'src/domain_bans.py').exists())
+        self.assertEqual((source / 'panel/domain-bans.php').read_bytes(), b'# administrator-customized file\n')
+        self.assertEqual(neighbor.read_bytes(), b'keep')
+
+    def test_retired_source_symlink_is_never_followed_or_deleted(self):
+        source = self.root / 'source'; (source / 'src').mkdir(parents=True); (source / 'panel').mkdir()
+        target = self.root / 'unrelated'; target.write_bytes(b'keep')
+        link = source / 'src/domain_bans.py'; link.symlink_to(target)
+        with patch.object(installer, 'SOURCE', source):
+            result = installer.retire_source()
+        self.assertEqual(result['removed'], [])
+        self.assertTrue(link.is_symlink()); self.assertEqual(target.read_bytes(), b'keep')

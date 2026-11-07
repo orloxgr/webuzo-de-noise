@@ -19,13 +19,14 @@ from presets import RULES
 import storage
 import probe_rules
 import cron_spread
-import domain_bans
+import host_protection
+import f2b_install
 import wordpress
 import enumeration
 import log_analysis
 import analysis_jobs
 
-REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
+REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -105,7 +106,7 @@ def recover():
         run(webmail.BINARY, '-t')
         webmail.reload()
     enumeration.apply(record.get('enumeration_changes', []), reverse=True)
-    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, domain_bans.APPLIED, enumeration.MANIFEST, webmail.HISTORY):
+    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, 'domain-ban-applied.json', enumeration.MANIFEST, webmail.HISTORY):
         if name not in record:
             continue  # Recovery journals from an older installed generation.
         old = record[name]
@@ -119,7 +120,6 @@ def apply(policy, sites, remove=False, global_blocks=None):
         known = {site['key'] for site in sites}
         policy['overrides'] = {key: mode for key, mode in policy['overrides'].items() if key in known}
         policy['static_exceptions'] = {key: paths for key, paths in policy['static_exceptions'].items() if key in known}
-        policy['domain_bans']['sites'] = {key: value for key, value in policy['domain_bans']['sites'].items() if key in known}
         for kind in ('files', 'queries'):
             policy['probe_exceptions'][kind] = {key: paths for key, paths in policy['probe_exceptions'][kind].items() if key in known}
     mail_site = next((site for site in sites if site.get('shared_webmail')), None)
@@ -135,9 +135,8 @@ def apply(policy, sites, remove=False, global_blocks=None):
     desired = {}
     sites, companion_manifest, companion_changes = enumeration.prepare(
         policy, sites, load(enumeration.MANIFEST, {}), site_mode, remove=remove)
-    domain_blocks = domain_bans.desired(policy, sites, STATE) if not remove else {}
     if not remove:
-        desired[str(GLOBAL)] = global_config(policy, [s for s in sites if not s.get('shared_webmail')], domain_blocks, global_blocks)
+        desired[str(GLOBAL)] = global_config(policy, [s for s in sites if not s.get('shared_webmail')], global_blocks)
         for site in sites:
             if site.get('shared_webmail'):
                 if mail_enabled:
@@ -166,7 +165,7 @@ def apply(policy, sites, remove=False, global_blocks=None):
     record = {'schema': 1, 'before': before, 'mail_touched': mail_touched,
               webmail.HISTORY: load(webmail.HISTORY, None),
               'policy.json': load('policy.json', None), 'manifest.json': load('manifest.json', None),
-              domain_bans.APPLIED: load(domain_bans.APPLIED, None),
+              'domain-ban-applied.json': load('domain-ban-applied.json', None),
               enumeration.MANIFEST: load(enumeration.MANIFEST, None),
               'enumeration_changes': companion_changes, 'custom_changes': custom_changes,
               web_bans.APPLIED: load(web_bans.APPLIED, None),
@@ -200,9 +199,9 @@ def apply(policy, sites, remove=False, global_blocks=None):
         storage.replace(STATE / web_bans.APPLIED, storage.json_bytes(global_blocks), 0o600)
         storage.replace(STATE / 'manifest.json', storage.json_bytes(sorted(desired)), 0o600)
         storage.replace(STATE / 'policy.json', storage.json_bytes(policy), 0o600)
-        storage.replace(STATE / domain_bans.APPLIED, storage.json_bytes(domain_blocks), 0o600)
         storage.replace(STATE / enumeration.MANIFEST, storage.json_bytes(companion_manifest), 0o600)
         storage.replace(STATE / 'transaction.json', None)
+        retire_domain_bans()
     except Exception as error:
         try:
             recover()
@@ -214,17 +213,13 @@ def apply(policy, sites, remove=False, global_blocks=None):
             'supported_sites': sum(s['supported'] for s in sites)}
 
 
-def synchronize(policy, sites, remove=False, disable_wordpress=False):
+def synchronize(policy, sites, remove=False):
     health = copy.deepcopy(load('maintenance.json', {}))
     health.update(last_attempt=time.time(), error='')
     try:
         if remove:
             auto_bans.cleanup(policy, sites, STATE, auto_bans.Native(webuzo.HOME, run, STATE))
-        else:
-            domain_bans.synchronize(policy, sites, STATE, auto_bans.Native(webuzo.HOME, run, STATE))
         result = apply(policy, sites, remove=remove)
-        if disable_wordpress and wordpress.read_json(STATE, wordpress.RECEIPT) is not None:
-            wordpress.apply(STATE, {**wordpress.settings(STATE), 'enabled': False}, run)
         if not remove:
             bans = auto_bans.synchronize(policy, sites, STATE, auto_bans.Native(webuzo.HOME, run, STATE))
             if bans.get('error'):
@@ -237,6 +232,19 @@ def synchronize(policy, sites, remove=False, disable_wordpress=False):
         raise
     storage.replace(STATE / 'maintenance.json', storage.json_bytes(health), 0o600)
     return result
+
+
+def retire_domain_bans():
+    """Called only after the replacement Nginx configuration has loaded."""
+    with auto_bans.database(STATE, create=False) as db:
+        if db is not None:
+            for table in ('domain_cursors', 'domain_strikes', 'domain_bans'):
+                db.execute('DROP TABLE IF EXISTS ' + table)
+            for table in ('ban_history', 'ban_diagnostics', 'strike_evidence'):
+                db.execute('DELETE FROM ' + table + " WHERE scope='domain'")
+            db.execute("DELETE FROM meta WHERE key LIKE 'domain-%'")
+            db.commit()
+    storage.replace(STATE / 'domain-ban-applied.json', None)
 
 
 def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
@@ -257,16 +265,6 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
                 listing.get('bans_page', 1), listing.get('bans_view', 'active'))
         except (OSError, ValueError) as error:
             ban_status = {'error': str(error)}
-    try:
-        scoped = domain_bans.report(policy, sites, STATE, owner,
-            page=listing.get('domain_page', 1), view=listing.get('domain_view', 'active'))
-    except (OSError, ValueError) as error:
-        scoped = {'active': 0, 'pending': 0, 'rows': [], 'error': str(error)}
-    visible_keys = {row['key'] for row in rows}
-    scoped['preferences'] = {key: value for key, value in policy['domain_bans']['sites'].items() if key in visible_keys}
-    scoped['can_edit'] = owner is None or policy['domain_bans']['allow_users']
-    scoped['limits'] = {key: {name: policy['bans'][key][name] for name in ('maxretry', 'findtime', 'duration_days')}
-                       for key in ('missing_files', 'suspicious_queries', 'any_404')}
     wordpress_status = None
     if owner is None:
         try:
@@ -279,10 +277,11 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
     return {'ok': True, 'version': VERSION, 'policy': policy if owner is None else {'mode': policy['mode']},
             'sites': rows, 'activity': metrics,
             'bans': ban_status,
-            'domain_bans': scoped,
             'history': ban_history.settings(STATE),
             'maintenance': maintenance,
             'wordpress': wordpress_status,
+            'fail2ban': host_protection.snapshot(STATE, run) if owner is None else None,
+            'install_job': f2b_install.status(STATE) if owner is None else None,
             'cron': cron_spread.public(load('cron-spread.json', None)) if owner is None else None,
             'presets': {'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
                         'agent_categories': agent_catalog.CATEGORIES,
@@ -301,7 +300,7 @@ def authorize(request):
     owner = account(request.get('owner', actor))
     if not admin and owner != actor:
         raise PermissionError('Another account cannot be selected')
-    if request.get('action') not in ('status', 'domain_bans_save', 'history_clear', 'activity_start', 'activity_status', 'activity_cancel') and not admin:
+    if request.get('action') not in ('status', 'activity_start', 'activity_status', 'activity_cancel') and not admin:
         raise PermissionError('Only an administrator can change De-Noise settings')
     return admin, owner
 
@@ -309,6 +308,40 @@ def authorize(request):
 def dispatch(request):
     if not isinstance(request, dict):
         raise ValueError('Expected a JSON object')
+    if isinstance(request.get('action'), str) and request['action'].startswith('fail2ban_'):
+        admin, owner = authorize(request)
+        if not admin or owner != request['actor']:
+            raise PermissionError('Fail2ban management requires the administrator context')
+        action = request['action']
+        permitted = {'fail2ban_status': set(), 'fail2ban_start': set(), 'fail2ban_save': {'settings'},
+                     'fail2ban_test': {'service'}, 'fail2ban_unban': {'service', 'ips'},
+                     'fail2ban_install_preview': set(), 'fail2ban_install_start': {'plan_token'},
+                     'fail2ban_install_status': set()}
+        if action not in permitted or set(request) - ({'actor', 'owner', 'action', 'listing'} | permitted.get(action, set())):
+            raise ValueError('Unsupported Fail2ban operation or parameters')
+        if action == 'fail2ban_install_status':
+            return {'ok': True, 'install_job': f2b_install.status(STATE)}
+        if action not in ('fail2ban_status', 'fail2ban_install_start') and f2b_install.status(STATE)['state'] in ('queued', 'running'):
+            raise ValueError('Wait for the Fail2ban installation to finish before changing authentication protection')
+        extra = {}
+        if action == 'fail2ban_install_preview':
+            extra['install_plan'] = f2b_install.preview(STATE, run)
+        elif action == 'fail2ban_install_start':
+            extra['install_job'] = f2b_install.start(STATE, request.get('plan_token'), run)
+            return {'ok': True, **extra}
+        elif action == 'fail2ban_save':
+            extra['service_result'] = host_protection.apply(STATE, request.get('settings'), run)
+        elif action == 'fail2ban_test':
+            key = request.get('service')
+            host_protection.jail(key)
+            extra['filter_test'] = {key: host_protection.test_filter(STATE, key, host_protection.discover(run)[key], run)}
+        elif action == 'fail2ban_unban':
+            host_protection.unban(STATE, request.get('service'), request.get('ips'), run)
+        elif action == 'fail2ban_start':
+            run(host_protection.client(), '-t')
+            run(host_protection.binary('systemctl') or '/usr/bin/systemctl', 'enable', '--now', 'fail2ban')
+        return {'ok': True, 'fail2ban': host_protection.snapshot(STATE, run, live=True),
+                'install_job': f2b_install.status(STATE), 'wordpress': wordpress.snapshot(STATE, run), **extra}
     if request.get('action') in REVIEW_ACTIONS:
         admin, owner = authorize(request)
         if request['action'].startswith('activity_'):
@@ -363,8 +396,8 @@ def dispatch(request):
     ban_history.selection(listing.get('wordpress_page', 1))
     if action == 'history_clear':
         scope = request.get('scope')
-        if scope not in ('global', 'domain') or (scope == 'global' and not (admin and owner == request['actor'])):
-            raise PermissionError('Only domain history for your account can be cleared')
+        if scope != 'global' or not (admin and owner == request['actor']):
+            raise PermissionError('Only the administrator can clear global ban history')
         with auto_bans.database(STATE, create=False) as db:
             if db is not None:
                 ban_history.clear(db, scope, owner=None if admin and owner == request['actor'] else owner)
@@ -374,6 +407,9 @@ def dispatch(request):
             if db is not None:
                 ban_history.maintain(STATE, db, force=True)
     elif action == 'wordpress_save':
+        host_protection.client()
+        if f2b_install.status(STATE)['state'] in ('queued', 'running'):
+            raise ValueError('Wait for the Fail2ban installation to finish')
         if set(request) - {'actor', 'owner', 'action', 'settings', 'listing'}:
             raise ValueError('Only WordPress protection settings can be submitted')
         wordpress.apply(STATE, request.get('settings'), run)
@@ -381,32 +417,6 @@ def dispatch(request):
         wordpress.unban(STATE, request.get('ips'), run)
     elif action == 'wordpress_status':
         pass
-    elif action == 'domain_bans_save':
-        if set(request) - {'actor', 'owner', 'action', 'preferences', 'listing'}:
-            raise ValueError('Only domain trigger selections can be submitted')
-        if not admin and not policy['domain_bans']['allow_users']:
-            raise PermissionError('Domain automatic-ban editing is disabled by the administrator')
-        preferences = request.get('preferences')
-        if not isinstance(preferences, dict) or not preferences:
-            raise ValueError('Select existing domain automatic-ban settings')
-        known = {site['key']: site for site in sites if site.get('kind') != 'mail'}
-        for key, flags in preferences.items():
-            if (key not in known or (not (admin and owner == request['actor']) and known[key]['owner'] != owner)):
-                raise PermissionError('This domain does not belong to the selected account')
-            if not known[key]['supported'] or known[key]['suspended']:
-                raise ValueError('This domain is suspended or unsupported')
-            if isinstance(flags, dict) and set(flags) == {'missing_files', 'suspicious_queries'}:
-                # An already-open 0.5 panel cannot clear a newer switch.
-                flags['any_404'] = policy['domain_bans']['sites'].get(key, {}).get('any_404', False)
-            if (not isinstance(flags, dict) or set(flags) != {'missing_files', 'suspicious_queries', 'any_404'}
-                    or any(type(value) is not bool for value in flags.values())):
-                raise ValueError('Only domain trigger switches can be changed')
-        for key, flags in preferences.items():
-            if any(flags.values()):
-                policy['domain_bans']['sites'][key] = flags
-            else:
-                policy['domain_bans']['sites'].pop(key, None)
-        apply(policy, sites)
     elif action == 'cron_preview':
         plan = cron_spread.preview(webuzo.cron_metadata, request.get('minimum', 5), request.get('maximum', 15))
         storage.replace(STATE / 'cron-spread.json', storage.json_bytes(plan), 0o600)
@@ -424,25 +434,16 @@ def dispatch(request):
         if not isinstance(incoming, dict):
             raise ValueError('Expected policy settings')
         previous = policy
-        if incoming.get('schema') in (6, 7, 8, 9, 10):
-            if not isinstance(incoming.get('domain_bans'), dict):
-                raise ValueError('Invalid domain automatic-ban policy')
-            incoming = {**incoming, 'domain_bans': {**incoming.get('domain_bans', {}),
-                'sites': previous['domain_bans']['sites'] if incoming.get('schema') in (7, 8, 9, 10) else {}}}
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') not in (9, 10):
+        if incoming.get('schema') not in (9, 10, 11):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9, 10):
+        if incoming.get('schema') not in (8, 9, 10, 11):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):
                 policy['bans']['any_404'][key] = previous['bans']['any_404'][key]
         if incoming.get('schema') in (1, 2, 3, 4, 5, 6):
             policy['bans']['any_404'] = previous['bans']['any_404']
-        if incoming.get('schema') == 6:
-            policy['domain_bans']['sites'] = previous['domain_bans']['sites']
-        if incoming.get('schema') in (1, 2, 3, 4, 5):
-            policy['domain_bans'] = previous['domain_bans']
         if incoming.get('schema') in (1, 2):
             policy['static_exceptions'] = previous['static_exceptions']
         if incoming.get('schema') in (1, 2, 3):
@@ -473,8 +474,6 @@ def dispatch(request):
     elif action == 'disable':
         policy['mode'] = 'off'; policy['overrides'] = {}
         apply(policy, sites)
-        if wordpress.read_json(STATE, wordpress.RECEIPT) is not None:
-            wordpress.apply(STATE, {**wordpress.settings(STATE), 'enabled': False}, run)
     elif action == 'sync':
         synchronize(policy, sites)
     elif action == 'unban':
@@ -511,6 +510,7 @@ def main():
     with locked():
         recover()
         wordpress.recover(STATE, run)
+        host_protection.recover(STATE, run)
         if sys.argv[1:] != ['status'] and load('active.json', {}).get('active') is not True:
             raise RuntimeError('De-Noise is not active')
         if sys.argv[1:]:
@@ -522,7 +522,7 @@ def main():
             if action == ['disable']:
                 policy['mode'] = 'off'; policy['overrides'] = {}
             if action != ['status']:
-                result = synchronize(policy, sites, remove=action == ['remove-rules'], disable_wordpress=action == ['disable'])
+                result = synchronize(policy, sites, remove=action == ['remove-rules'])
             else:
                 result = snapshot(policy, sites)
         else:
