@@ -79,3 +79,25 @@ class ReviewPanelTests(unittest.TestCase):
             self.assertNotIn('<img src=x>', body)
             self.assertIn('Append selected to lists', body)
             self.assertNotIn('form="hdn-settings"', body)
+            self.assertEqual('Bot information' in body, kind == 'agents')
+
+    def test_bot_information_escapes_metadata_and_allows_only_https_source_links(self):
+        info = dict(operator='Operator <script>bad</script>', purpose='Purpose <img src=x>',
+                    usefulness='Shop & SEO <b>advice</b>', url='https://example.test/docs?a=1&b=2')
+        row = dict(value='TestBot', candidate='TestBot', category='agents', count=3,
+                   domains=[dict(domain='one.test', count=3)], bot_info=info)
+        analysis = dict(inventory_kind='agents', minutes=30, totals={'requests':3}, domains=1,
+            findings_total=1, bytes_read=100, note='Observed traffic', categories={'agents':'Other'}, findings=[row])
+        body = self.render('inventory-output.php', analysis)
+        self.assertIn('<th>Bot information</th>', body)
+        self.assertIn('<strong>Useful for:</strong>', body)
+        self.assertIn('Operator &lt;script&gt;', body)
+        self.assertIn('Purpose &lt;img src=x&gt;', body)
+        self.assertIn('Shop &amp; SEO &lt;b&gt;advice&lt;/b&gt;', body)
+        self.assertNotIn('<script>bad', body)
+        self.assertIn('https://example.test/docs?a=1&amp;b=2', body)
+        self.assertIn('rel="noopener noreferrer"', body)
+        info['url'] = 'javascript:alert(1)'
+        body = self.render('inventory-output.php', analysis)
+        self.assertNotIn('javascript:', body)
+        self.assertNotIn('>Source</a>', body)

@@ -39,6 +39,11 @@ Use **Analyze current agents** in User-Agents or **Analyze PHP 404s** under
 selected PHP file bans to inspect recorded traffic. Select results and choose
 **Append selected to lists**, then **Save & Apply**. **Export CSV** downloads all
 agent names and hit counts from the completed analysis, across every result page.
+The **Bot information** column shows the operator or tool project, its purpose,
+practical uses for your site (such as search discovery, link previews or SEO
+audits), and a source link. Unidentified declarations stay marked as unconfirmed.
+This bundled reference also appears on existing completed reports; no new scan
+or external lookup is needed to display it. CSV keeps its two agent/hits columns.
 
 Each User-Agent list also has **Append analyzed agents**. It adds recognized
 names in that category from the entire completed analysis, across every result

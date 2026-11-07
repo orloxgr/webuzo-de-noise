@@ -64,3 +64,10 @@ def observed(value):
 def enabled(policy):
     return list(dict.fromkeys(entry for field in CATEGORIES if policy[field + '_enabled']
                              for entry in policy[field]))
+
+
+def describe(value):
+    """Explain a declared product without changing classification or rules."""
+    import agent_details
+    name, _ = observed(value)
+    return agent_details.describe(name)

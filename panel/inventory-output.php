@@ -18,11 +18,19 @@ $prefix = 'hdn-' . $kind;
 <?php endif; ?>
 </div>
 <p data-hdn-append-status role="status" class="u-mb10"></p>
-<div class="hdn-scoped-table-wrap"><table class="table hdn-inventory-table"><thead><tr><th>Select</th><th><?= $kind === 'agents' ? 'Declared agent' : 'PHP path · HTTP 404' ?></th><th>Hits</th><th>Source domains / hits</th><th>Append to</th></tr></thead><tbody>
+<div class="hdn-scoped-table-wrap"><table class="table hdn-inventory-table"><thead><tr><th>Select</th><th><?= $kind === 'agents' ? 'Declared agent' : 'PHP path · HTTP 404' ?></th><?php if ($kind === 'agents'): ?><th>Bot information</th><?php endif; ?><th>Hits</th><th>Source domains / hits</th><th>Append to</th></tr></thead><tbody>
 <?php foreach ($analysis['findings'] ?? [] as $row): ?>
 <tr data-hdn-inventory-row>
 <td><input type="checkbox" data-hdn-inventory-value="<?= $escape($row['candidate'] ?? '') ?>" <?= empty($row['candidate']) ? 'disabled' : '' ?> aria-label="Select <?= $escape($row['value'] ?: 'empty agent') ?>"></td>
 <td><code><?= $escape($row['value'] === '' || $row['value'] === '-' ? 'Not sent' : $row['value']) ?></code></td>
+<?php if ($kind === 'agents'): $info = $row['bot_info'] ?? []; ?>
+<td class="hdn-bot-info">
+<strong><?= $escape($info['operator'] ?? 'Not identified') ?></strong>
+<p><?= $escape($info['purpose'] ?? 'Purpose not identified from this User-Agent.') ?></p>
+<p><strong>Useful for:</strong> <?= $escape($info['usefulness'] ?? 'Review the requested URLs before blocking.') ?></p>
+<?php if (is_string($info['url'] ?? null) && strpos($info['url'], 'https://') === 0): ?><a href="<?= $escape($info['url']) ?>" target="_blank" rel="noopener noreferrer">Source</a><?php endif; ?>
+</td>
+<?php endif; ?>
 <td><?= $escape($row['count']) ?></td>
 <td><details><summary><?= $escape(count($row['domains'])) ?> domain(s)</summary><?php foreach ($row['domains'] as $domain): ?><div><?= $escape($domain['domain']) ?> · <?= $escape($domain['count']) ?></div><?php endforeach; ?></details></td>
 <td><?php if ($kind === 'agents'): ?>

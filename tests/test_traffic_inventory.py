@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import agent_catalog
+import agent_details
 import analysis_jobs
 import engine
 import log_analysis
@@ -21,6 +22,38 @@ import webmail
 
 
 class Categories(unittest.TestCase):
+    def test_bot_information_distinguishes_training_search_fetch_and_tool_developers(self):
+        cases = [('GPTBot', 'OpenAI', 'train', 'AI model'),
+                 ('OAI-SearchBot', 'OpenAI', 'search', 'shop'),
+                 ('ChatGPT-User', 'OpenAI', 'requests', 'conversation'),
+                 ('AhrefsBot', 'Ahrefs', 'backlink', 'Ahrefs'),
+                 ('Googlebot-Image', 'Google', 'images', 'product photos'),
+                 ('facebookexternalhit', 'Meta', 'previews', 'product'),
+                 ('ElevenlabsCrawler', 'ElevenLabs', 'train', 'model'),
+                 ('Nuclei', 'ProjectDiscovery (user-run tool)', 'vulnerability', 'requested')]
+        for name, operator, purpose, usefulness in cases:
+            with self.subTest(name=name):
+                info = agent_catalog.describe('Mozilla/5.0 (compatible; ' + name.lower() + '/1.0)')
+                self.assertEqual(info['operator'], operator)
+                self.assertIn(purpose.lower(), info['purpose'].lower())
+                self.assertIn(usefulness.lower(), info['usefulness'].lower())
+                self.assertTrue(info['url'].startswith('https://'))
+        self.assertNotEqual(agent_catalog.describe('Googlebot-Image')['purpose'],
+                            agent_catalog.describe('Googlebot')['purpose'])
+
+    def test_unknown_information_never_uses_user_agent_urls_as_sources_or_invents_operators(self):
+        for value in ('', '-', 'Mozilla/5.0 Chrome/156.0', 'NotGPTBot/1.0',
+                      'UnknownBot (+https://example.test/evil)', '<script>alert(1)</script>', 'ZmEu'):
+            with self.subTest(value=value):
+                info = agent_catalog.describe(value)
+                self.assertEqual(info['operator'], 'Not confirmed')
+                self.assertIsNone(info['url'])
+        for key, info in agent_details.DETAILS.items():
+            self.assertIn(key, {name.casefold() for name, _ in agent_catalog._NAMES})
+            self.assertEqual(set(info), {'operator', 'purpose', 'usefulness', 'url'})
+        info = agent_catalog.describe('GPTBot'); info['operator'] = 'Changed'
+        self.assertEqual(agent_catalog.describe('GPTBot')['operator'], 'OpenAI')
+
     def test_empty_defaults_and_disjoint_suggestions(self):
         all_names = []
         for field, category in agent_catalog.CATEGORIES.items():
@@ -261,6 +294,24 @@ class Inventory(unittest.TestCase):
     def test_empty_completed_export_is_valid(self):
         job, _ = self.export_job()
         self.assertEqual(analysis_jobs.export_agents(self.root, job, 'root'), dict(rows=[], total=0, next_offset=None))
+
+    def test_existing_completed_reports_gain_information_without_rewriting_reports_or_counts(self):
+        (self.logs / 'one.test.log').write_text(self.line(agent='PerplexityBot/1.0') * 2 +
+                                               self.line(agent='Unknown Browser'))
+        job, directory = self.export_job()
+        files = [directory / 'result.json', directory / 'report.sqlite']
+        before = [path.read_bytes() for path in files]
+        self.assertNotIn('bot_info', before[0].decode())
+        with patch.object(log_analysis, 'scan') as scan:
+            result = analysis_jobs.status(self.root, job, 'root', kind='agents')['analysis']
+        scan.assert_not_called()
+        rows = {row['value']: row for row in result['findings']}
+        self.assertEqual(rows['PerplexityBot']['count'], 2)
+        self.assertEqual(rows['PerplexityBot']['category'], 'search_agents')
+        self.assertEqual(rows['PerplexityBot']['bot_info']['operator'], 'Perplexity')
+        self.assertEqual(rows['Unknown Browser']['bot_info']['operator'], 'Not confirmed')
+        self.assertEqual(before, [path.read_bytes() for path in files])
+        self.assertFalse((self.root / 'policy.json').exists())
 
     def test_category_candidates_scan_all_chunks_and_exclude_unknown_other_values(self):
         agents = ['Unknown-' + str(n) for n in range(1005)] + [

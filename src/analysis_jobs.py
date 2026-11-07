@@ -214,6 +214,10 @@ def status(state, job, actor, page=1, kind="scan", owner=None):
             analysis['findings'] = analysis['findings'][(page - 1) * 20:page * 20]
         analysis['page'] = page
         analysis['pages'] = pages
+        if kind == 'agents':
+            import agent_catalog
+            for row in analysis['findings']:
+                row['bot_info'] = agent_catalog.describe(row['value'])
         result['analysis'] = analysis
     return result
 

@@ -71,7 +71,9 @@
 .hdn-inventory-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .hdn-inventory-table td { vertical-align: top; }
 .hdn-inventory-table code { white-space: normal; overflow-wrap: anywhere; }
-.hdn-inventory-table td:nth-child(2) { max-width: 30rem; }
+.hdn-inventory-table td:nth-child(2) { min-width: 180px; max-width: 30rem; }
+.hdn-bot-info { min-width: 240px; max-width: 360px; }
+.hdn-bot-info p { margin: 6px 0; }
 .hdn-inventory-table td:last-child { min-width: 180px; }
 @media (max-width: 640px) { .hdn-agent-grid { grid-template-columns: minmax(0, 1fr); } }
 
