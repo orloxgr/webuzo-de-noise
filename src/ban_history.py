@@ -6,6 +6,7 @@ import time
 
 import ban_evidence
 import storage
+import listing
 
 PAGE_SIZE = 50
 SETTINGS = 'history-settings.json'
@@ -105,14 +106,12 @@ def selection(page=1, view='active'):
     return page, view
 
 
-def pagination(total, page=1, view='active'):
+def pagination(total, page=1, view='active', per_page=PAGE_SIZE):
     selection(page, view)
-    pages = max(1, math.ceil(total / PAGE_SIZE))
-    page = min(page, pages)
-    return {'page': page, 'pages': pages, 'total': total, 'per_page': PAGE_SIZE, 'view': view}
+    return {**listing.pagination(total, page, per_page), 'view': view}
 
 
-def page(db, scope, owner=None, number=1):
+def page(db, scope, owner=None, number=1, per_page=PAGE_SIZE):
     selection(number, 'history')
     where, args = 'scope=? AND ended IS NOT NULL', [scope]
     if owner is not None:
@@ -120,10 +119,10 @@ def page(db, scope, owner=None, number=1):
             raise PermissionError('Global ban history is administrator-only')
         where += ' AND scope_key GLOB ?'; args.append(owner + '/*')
     total = db.execute('SELECT COUNT(*) FROM ban_history WHERE ' + where, args).fetchone()[0]
-    meta = pagination(total, number, 'history')
+    meta = pagination(total, number, 'history', per_page)
     rows = []
     for item in db.execute('SELECT * FROM ban_history WHERE ' + where + ' ORDER BY ended DESC,id DESC LIMIT ? OFFSET ?',
-                           (*args, PAGE_SIZE, (meta['page'] - 1) * PAGE_SIZE)):
+                           (*args, *listing.bounds(meta))):
         row = dict(item)
         row.update(site=row['scope_key'], status='released', error='', diagnostics=ban_evidence.decoded(row.pop('details')))
         rows.append(row)

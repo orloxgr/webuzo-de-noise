@@ -79,7 +79,8 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                     continue
                 outcome = 'matched'
                 if limit == 'REJECTED' or (mode == 'enforce' and (
-                        status == '403' and (rule in ('agent', 'private-file', 'global-ban', 'domain-ban', 'user-enumeration') or rule.startswith('filter-block-'))
+                        status == '403' and (rule in ('agent', 'private-file', 'global-ban', 'domain-ban', 'user-enumeration', 'country-filter') or rule.startswith('filter-block-'))
+                        or status == '401' and rule == 'wordpress-access'
                         or status == '404' and (rule.startswith('static-') or rule in ('missing-file', 'suspicious-query')))):
                     outcome = 'blocked'
                 elif mode == 'observe' or limit.endswith('_DRY_RUN'):
@@ -101,6 +102,9 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
         'SELECT domain,rule,outcome,agent,COUNT(*) AS n FROM events GROUP BY domain,rule,outcome,agent ORDER BY n DESC,domain,rule,outcome,agent')]
     recent = [] if report_path is not None else [json.loads(row[0]) for row in connection.execute('SELECT payload FROM events ORDER BY stamp DESC')]
     connection.close()
-    return dict(available=True, window_minutes=minutes, sample_truncated=False, bytes_read=scanned,
+    return dict(available=True, window_minutes=minutes,
+                window_start=datetime.fromtimestamp(cutoff).astimezone().isoformat(timespec='seconds'),
+                window_end=datetime.fromtimestamp(now).astimezone().isoformat(timespec='seconds'),
+                sample_truncated=False, bytes_read=scanned,
                 total=total, rows=rows, recent=recent, findings_total=total, findings_database=report_path is not None,
                 webmail=mail_coverage)

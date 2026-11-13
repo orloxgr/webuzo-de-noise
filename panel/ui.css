@@ -79,3 +79,38 @@
 
 .hdn-diagnostic { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 24rem; overflow-y: auto; }
 .hdn-service-ips { max-height: 18rem; overflow-y: auto; }
+
+.hdn-activity-counts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.hdn-activity-counts>div { padding: 12px; border: 1px solid currentColor; border-radius: 4px; }
+.hdn-activity-counts strong { display: block; font-size: 24px; margin-bottom: 6px; }
+.hdn-activity-counts span { display: block; }
+.hdn-activity-agent-details summary { max-width: 18rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.hdn-activity-agent-details>div { margin-top: 8px; white-space: normal; overflow-wrap: anywhere; }
+.hdn-activity-rule-id { display: block; opacity: .75; overflow-wrap: anywhere; margin-top: 4px; }
+#hdn-activity-output .hdn-table-scroll { max-width: 100%; overflow-x: auto; }
+#hdn-activity-output table { min-width: 760px; width: 100%; }
+#hdn-activity-output td, #hdn-activity-output th { text-align: left; vertical-align: top; padding: 8px 10px; }
+#hdn-activity-scan .form-select, #hdn-activity-scan .form-control { max-width: 30rem; }
+@media(max-width:700px) { .hdn-activity-counts { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+
+/* Per-domain controls stay aligned inside the native Hestia theme. */
+.hdn-access-form fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+.hdn-access-form .form-label { display: block; }
+.hdn-access-form .form-control, .hdn-access-form .form-select { width: 100%; min-width: 0; box-sizing: border-box; }
+.hdn-access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 640px) { .hdn-access-grid { grid-template-columns: 1fr; gap: 0; } }
+
+#hdn-container .hdn-list-controls { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+#hdn-container .hdn-list-controls label { display:flex; align-items:center; gap:8px; margin:0; }
+#hdn-container .hdn-list-controls select { width:auto; min-width:85px; }
+#hdn-container [data-hdn-list-row][hidden], #hdn-container tr[hidden] { display:none !important; }
+#hdn-container [data-hdn-remote-list][aria-busy="true"] { opacity:.65; pointer-events:none; }
+
+.hdn-review-filters { padding: 14px; border: 1px solid #c4cbd8; border-radius: 6px; }
+.hdn-review-tags span { display: inline-block; padding: 2px 6px; margin: 3px 3px 3px 0; border: 1px solid currentColor; border-radius: 4px; font-size: .88em; }
+.hdn-review-priority { display: inline-block; padding: 3px 7px; border-left: 4px solid #667085; }
+.hdn-review-priority[data-hdn-priority="high"] { border-left-color: #c23535; }
+.hdn-review-priority[data-hdn-priority="low"] { border-left-color: #277645; }
+.hdn-review-note { display: flex; gap: 7px; flex-wrap: wrap; align-items: end; }
+.hdn-review-note label { min-width: 160px; }
+.hdn-review-note small { flex-basis: 100%; }

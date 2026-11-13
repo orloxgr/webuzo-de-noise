@@ -30,11 +30,13 @@ class TransactionTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.directory = Path(self.temp.name)
         self.state = self.directory / 'state'; self.state.mkdir()
+        units = self.directory / 'units'; units.mkdir()
         self.global_file = self.directory / '00-de-noise.conf'
         self.snippets = self.directory / 'snippets'; self.snippets.mkdir()
         self.custom = self.directory / 'custom'; self.custom.mkdir()
         self.domain_file = self.snippets / 'example.test.conf'
         self.patches = [patch.object(engine, 'STATE', self.state),
+                        patch.object(engine.captcha_runtime, 'UNITS', units),
                         patch.object(engine, 'GLOBAL', self.global_file),
                         patch.object(webuzo, 'GLOBAL', self.global_file),
                         patch.object(webuzo, 'GLOBAL_CUSTOM', self.directory / 'native-global-custom.conf'),
@@ -76,6 +78,126 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(first['changed_files'], 2)
         self.assertEqual(second['changed_files'], 0)
         self.assertEqual(reload.call_count, 1)
+
+    def test_failed_captcha_candidate_restores_password_profile_and_releases_new_socket(self):
+        import access_protection as access
+        import captcha_runtime as runtime
+        credentials = self.directory / 'access'; credentials.mkdir()
+        saved = access.defaults()
+        saved['defaults'].update(enabled=True, password_hash='$6$salt$'+'a'*86)
+        candidate = copy.deepcopy(saved)
+        candidate['defaults'].update(method='captcha', password_hash='')
+        with patch.object(access, 'DIRECTORY', credentials), \
+                patch.object(runtime, 'worker_group', return_value='root'), \
+                patch.object(runtime, 'enable') as enable, patch.object(runtime, 'disable') as disable, \
+                patch.object(engine, 'verify'), patch.object(engine, 'run', return_value=''):
+            engine.apply(DEFAULT, [self.site], access=saved)
+            password = credentials / (access.identifier(self.site['key'])+'.htpasswd')
+            previous = password.read_bytes()
+            with patch.object(engine, 'verify', side_effect=RuntimeError('Rejected CAPTCHA configuration')):
+                with self.assertRaisesRegex(RuntimeError, 'Rejected CAPTCHA'):
+                    engine.apply(DEFAULT, [self.site], access=candidate)
+            self.assertEqual(engine.access_settings(), saved)
+            self.assertEqual(password.read_bytes(), previous)
+            self.assertFalse((credentials / runtime.CONFIG_NAME).exists())
+            self.assertFalse(list(credentials.glob('*.captcha.conf')))
+            self.assertFalse((self.state / 'transaction.json').exists())
+            enable.assert_called_once()
+            disable.assert_called_once()
+
+    def captcha_profile(self):
+        import access_protection as access
+        settings=access.defaults()
+        settings['defaults'].update(enabled=True,method='captcha')
+        return settings
+
+    def test_captcha_save_provisions_missing_runtime_without_activation(self):
+        import access_protection as access, captcha_runtime as runtime
+        directory=self.directory/'access';directory.mkdir()
+        commands=[]
+        def native(*args):
+            commands.append(args)
+            if 'enable' in args:
+                self.assertTrue((runtime.UNITS/(runtime.NAME+'.socket')).is_file())
+                self.assertTrue((runtime.UNITS/(runtime.NAME+'.service')).is_file())
+            return ''
+        with patch.object(access,'DIRECTORY',directory), patch.object(runtime,'worker_group',return_value='root'), \
+             patch.object(engine,'verify'), patch.object(engine,'run',side_effect=native):
+            engine.apply(DEFAULT,[self.site],access=self.captcha_profile())
+            self.assertFalse((self.state/'transaction.json').exists())
+            self.assertTrue((directory/runtime.CONFIG_NAME).exists())
+            self.assertLess(commands.index(('/usr/bin/systemctl','daemon-reload')),
+                            commands.index(('/usr/bin/systemctl','enable','--now',runtime.NAME+'.socket')))
+            count=len(commands)
+            engine.apply(DEFAULT,[self.site],access=self.captcha_profile())
+            self.assertNotIn(('/usr/bin/systemctl','daemon-reload'),commands[count:])
+
+    def test_foreign_captcha_unit_rejected_before_website_or_recovery_changes(self):
+        import access_protection as access, captcha_runtime as runtime
+        directory=self.directory/'access';directory.mkdir()
+        foreign=runtime.UNITS/(runtime.NAME+'.socket');foreign.write_text('# Administrator unit\n')
+        previous=(MARKER+'\n# Existing rules\n').encode();self.global_file.write_bytes(previous)
+        with patch.object(access,'DIRECTORY',directory), patch.object(runtime,'worker_group',return_value='root'), \
+             patch.object(engine,'run') as run:
+            with self.assertRaisesRegex(ValueError,'not owned'):
+                engine.apply(DEFAULT,[self.site],access=self.captcha_profile())
+            run.assert_not_called()
+        self.assertEqual(self.global_file.read_bytes(),previous)
+        self.assertFalse((self.state/'transaction.json').exists())
+        self.assertFalse((directory/runtime.CONFIG_NAME).exists())
+        self.assertEqual(foreign.read_text(),'# Administrator unit\n')
+
+    def test_previous_captcha_journal_recovers_when_socket_units_are_missing(self):
+        import access_protection as access, captcha_runtime as runtime
+        directory=self.directory/'access';directory.mkdir()
+        config=directory/runtime.CONFIG_NAME
+        config.write_text(MARKER+'\n{}\n')
+        record={'schema':1,'before':{str(config):None},'manifest.json':[],
+                'policy.json':DEFAULT,access.SETTINGS:access.defaults()}
+        (self.state/'transaction.json').write_text(json.dumps(record))
+        commands=[]
+        def native(*args):
+            commands.append(args)
+            if args[:4]==('/usr/bin/systemctl','show','--property=LoadState','--value'):return 'not-found\n'
+            if 'disable' in args or 'stop' in args:raise RuntimeError('Unit file does not exist')
+            return ''
+        with patch.object(access,'DIRECTORY',directory),patch.object(engine,'run',side_effect=native):
+            engine.recover()
+        self.assertFalse(config.exists())
+        self.assertFalse((self.state/'transaction.json').exists())
+        self.assertEqual(engine.access_settings(),access.defaults())
+        self.assertEqual(sum('show' in c for c in commands),2)
+
+    def test_captcha_cleanup_failure_keeps_recovery_journal_until_retry_succeeds(self):
+        import access_protection as access, captcha_runtime as runtime
+        directory=self.directory/'access';directory.mkdir()
+        with patch.object(access,'DIRECTORY',directory), patch.object(runtime,'worker_group',return_value='root'), \
+             patch.object(engine,'run',return_value=''), patch.object(runtime,'enable'), \
+             patch.object(runtime,'disable',side_effect=RuntimeError('socket stop failed')), \
+             patch.object(engine,'verify',side_effect=RuntimeError('invalid nginx candidate')):
+            with self.assertRaisesRegex(RuntimeError,'recovery journal has been retained'):
+                engine.apply(DEFAULT,[self.site],access=self.captcha_profile())
+            self.assertTrue((self.state/'transaction.json').exists())
+            with patch.object(runtime,'disable') as disable:
+                engine.recover()
+                disable.assert_called_once()
+            self.assertFalse((self.state/'transaction.json').exists())
+
+    def test_restoring_active_captcha_provisions_units_before_nginx_reload(self):
+        import access_protection as access, captcha_runtime as runtime
+        directory=self.directory/'access';directory.mkdir()
+        config=directory/runtime.CONFIG_NAME
+        record={'schema':1,'before':{str(config):MARKER+'\n{}\n'},'manifest.json':[str(config)],
+                'policy.json':DEFAULT,access.SETTINGS:self.captcha_profile(),'captcha_enabled_before':True}
+        (self.state/'transaction.json').write_text(json.dumps(record))
+        commands=[]
+        with patch.object(access,'DIRECTORY',directory),patch.object(runtime,'worker_group',return_value='root'), \
+             patch.object(engine,'run',side_effect=lambda *args: commands.append(args) or ''), \
+             patch.object(engine,'reload_nginx',side_effect=lambda: commands.append(('nginx-reload',))):
+            engine.recover()
+        self.assertTrue((runtime.UNITS/(runtime.NAME+'.socket')).exists())
+        self.assertLess(commands.index(('/usr/bin/systemctl','enable','--now',runtime.NAME+'.socket')),commands.index(('nginx-reload',)))
+        self.assertFalse((self.state/'transaction.json').exists())
 
     def test_interrupted_apply_recovers_previous_state(self):
         self.global_file.write_bytes((MARKER + '\n# Partial candidate\n').encode())

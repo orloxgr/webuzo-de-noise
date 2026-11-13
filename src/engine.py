@@ -10,11 +10,12 @@ import sys
 import time
 
 from policy import (DEFAULT, VERSION, SCANNER_AGENTS, CRAWLER_AGENTS, SEARCH_AGENTS, FILTER_AGENTS,
-                    account, domain, validate, site_mode, global_config, site_config)
+                    account, domain, target, validate, site_mode, global_config, site_config)
 import activity
 import agent_catalog
 import auto_bans
 import ban_history
+import listing as list_sizes
 from presets import RULES
 import storage
 import probe_rules
@@ -25,8 +26,11 @@ import wordpress
 import enumeration
 import log_analysis
 import analysis_jobs
+import access_protection
+import captcha_runtime
+import country_database
 
-REVIEW_ACTIONS = ('log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
+REVIEW_ACTIONS = ('review_mark', 'review_export', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -45,6 +49,10 @@ def collect():
 def managed_path(value):
     path = Path(value)
     if path in (GLOBAL, webmail.SNIPPET):
+        return path
+    if path.parent == access_protection.DIRECTORY and (re.fullmatch(r'[0-9a-f]{24}\.(?:htpasswd|captcha\.conf)', path.name) or path.name == captcha_runtime.CONFIG_NAME):
+        return path
+    if path.parent == STATE and re.fullmatch(r'country-[0-9a-f]{64}\.geo', path.name):
         return path
     if path.parent != webuzo.SNIPPETS or not path.name.endswith('.conf'):
         raise ValueError('Invalid managed configuration path')
@@ -76,11 +84,61 @@ def verify(paths):
     # included by the running distribution's Nginx configuration structure.
     dump = run(webuzo.NGINX, '-T')
     for path in paths:
+        if str(path).endswith('.htpasswd') or Path(path) == access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME:
+            continue
         if '# configuration file ' + str(path) + ':' not in dump:
             raise RuntimeError('Nginx does not load the expected include: ' + str(path))
 
 
 reload_nginx = webuzo.reload_nginx
+
+
+def replace_rule(path, text):
+    path = Path(path)
+    password = path.parent == access_protection.DIRECTORY and path.name.endswith('.htpasswd')
+    mode = 0o640 if password else (0o644 if path == access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME else 0o600)
+    gid = 0
+    if password:
+        import grp
+        gid = grp.getgrnam(captcha_runtime.worker_group()).gr_gid
+    storage.replace(path, None if text is None else text.encode(), mode, gid=gid)
+
+
+def access_settings():
+    raw = storage.read(STATE / access_protection.SETTINGS) if STATE.exists() else None
+    return access_protection.validate(json.loads(raw) if raw else access_protection.defaults(), target)
+
+
+
+def geo_metadata():
+    raw = storage.read(STATE / country_database.METADATA) if STATE.exists() else None
+    return json.loads(raw) if raw else {}
+
+
+
+def refresh_countries(policy, sites):
+    """Scheduled download only; serving requests never calls an external service."""
+    settings = access_settings()
+    if not any(s.get('kind') != 'mail' and s.get('supported') and not s.get('suspended')
+               and access_protection.effective(settings, s['key'])['country']['enabled']
+               and site_mode(policy, s) != 'off' for s in sites):
+        return
+    raw = storage.read(STATE / country_database.CONFIG)
+    config = json.loads(raw) if raw else {}
+    metadata = geo_metadata()
+    if not config.get('automatic') or time.time() - metadata.get('last_attempt', metadata.get('updated', 0)) < 86400:
+        return
+    if not metadata.get('error') and time.time() - metadata.get('updated', 0) < 7 * 86400:
+        return
+    metadata['last_attempt'] = time.time()
+    try:
+        geography = country_database.download(config)
+        apply(policy, sites, geography=geography)
+    except Exception as error:
+        metadata['error'] = str(error)
+        # Keep the last working country data and rules, while exposing the failure.
+        storage.replace(STATE / country_database.METADATA, storage.json_bytes(metadata), 0o600)
+
 
 
 def restore(record):
@@ -89,7 +147,7 @@ def restore(record):
         if not path.parent.exists() and text is None:
             continue
         storage.owned(path)
-        storage.replace(path, None if text is None else text.encode(), 0o600)
+        replace_rule(path, text)
 
 
 def recover():
@@ -98,24 +156,42 @@ def recover():
         return
     if record.get('schema') != 1 or not isinstance(record.get('before'), dict):
         raise ValueError('Invalid pending transaction; refusing unsafe recovery')
+    captcha_config = str(access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME)
+    captcha_before = record.get('captcha_enabled_before')
+    if 'captcha_enabled_before' in record and type(captcha_before) is not bool:
+        raise ValueError('Invalid CAPTCHA recovery state')
+    if captcha_before is None and (captcha_config in record['before'] or captcha_config in (record.get('manifest.json') or [])):
+        # The same journal already carries the previous manifest and file
+        # contents, including transactions made before runtime state was saved.
+        captcha_before = captcha_config in (record.get('manifest.json') or [])
     integration.write(record.get('custom_changes', []), restore=True)
     restore(record)
+    if captcha_before is True:
+        captcha_runtime.install(run)
+        captcha_runtime.enable(run)
     run(webuzo.NGINX, '-t')
     reload_nginx()
     if record.get('mail_touched'):
         run(webmail.BINARY, '-t')
         webmail.reload()
     enumeration.apply(record.get('enumeration_changes', []), reverse=True)
-    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, 'domain-ban-applied.json', enumeration.MANIFEST, webmail.HISTORY):
+    for name in ('policy.json', 'manifest.json', 'custom-manifest.json', web_bans.APPLIED, 'domain-ban-applied.json', enumeration.MANIFEST, webmail.HISTORY, access_protection.SETTINGS, country_database.METADATA):
         if name not in record:
             continue  # Recovery journals from an older installed generation.
         old = record[name]
         storage.replace(STATE / name, None if old is None else storage.json_bytes(old), 0o600)
+    if captcha_before is False:
+        captcha_runtime.disable(run)
     storage.replace(STATE / 'transaction.json', None)
 
 
-def apply(policy, sites, remove=False, global_blocks=None):
+def apply(policy, sites, remove=False, global_blocks=None, access=None, geography=None):
     policy = validate(policy)
+    access = access_settings() if access is None else access_protection.validate(access, target)
+    metadata = geography[1] if geography else geo_metadata()
+    geo_path = country_database.path(STATE, metadata)
+    if geography:
+        storage.replace(geo_path, geography[0], 0o600)
     if not remove:
         known = {site['key'] for site in sites}
         policy['overrides'] = {key: mode for key, mode in policy['overrides'].items() if key in known}
@@ -128,7 +204,7 @@ def apply(policy, sites, remove=False, global_blocks=None):
     if mail_enabled and not mail_site['supported']:
         raise ValueError(mail_site['reason'])
     custom_manifest, custom_changes = integration.prepare(sites, load('custom-manifest.json', {}),
-                                                        remove=remove, mail=mail_enabled)
+                                                        remove=remove, mail=mail_enabled, access=access, site_mode=lambda site: site_mode(policy, site))
     if global_blocks is None:
         global_blocks = load(web_bans.APPLIED, [])
     global_blocks = sorted(set(global_blocks)) if not remove else []
@@ -136,7 +212,7 @@ def apply(policy, sites, remove=False, global_blocks=None):
     sites, companion_manifest, companion_changes = enumeration.prepare(
         policy, sites, load(enumeration.MANIFEST, {}), site_mode, remove=remove)
     if not remove:
-        desired[str(GLOBAL)] = global_config(policy, [s for s in sites if not s.get('shared_webmail')], global_blocks)
+        desired[str(GLOBAL)] = global_config(policy, [s for s in sites if not s.get('shared_webmail')], global_blocks, access, geo_path)
         for site in sites:
             if site.get('shared_webmail'):
                 if mail_enabled:
@@ -145,7 +221,21 @@ def apply(policy, sites, remove=False, global_blocks=None):
             site['global_bans'] = bool(global_blocks)
             if site['supported'] and (site.get('kind') != 'mail' or policy['mail_protection']):
                 for path in site['paths']:
-                    desired[path] = site_config(policy, site, site.get('roots', {}).get(path))
+                    desired[path] = site_config(policy, site, site.get('roots', {}).get(path), access)
+                entry = access_protection.effective(access, site['key'])
+                if entry['enabled'] and entry['method'] == 'basic' and not site.get('suspended') and site_mode(policy, site) != 'off':
+                    directory = access_protection.DIRECTORY
+                    directory.mkdir(mode=0o755, exist_ok=True)
+                    with storage.parent(directory / '.check'):
+                        pass
+                    filename = directory / (access_protection.identifier(site['key']) + '.htpasswd')
+                    desired[str(filename)] = '# Managed by webuzo-de-noise\n' + entry['username'] + ':' + entry['password_hash'] + '\n'
+        if any(s.get('supported') and not s.get('suspended') and s.get('kind') != 'mail'
+               and site_mode(policy, s) != 'off' and access_protection.effective(access, s['key'])['country']['enabled'] for s in sites):
+            if not geo_path or not geo_path.is_file():
+                raise ValueError('Download the country database before enabling a country filter')
+    captcha_files, captcha_enabled = captcha_runtime.prepare(STATE, access_protection.DIRECTORY, access, sites, lambda site: site_mode(policy, site)) if not remove else ({}, False)
+    desired.update(captcha_files)
     manifest = load('manifest.json', [])
     old_paths = {str(managed_path(name)) for name in manifest}
     before, changes = {}, {}
@@ -159,6 +249,11 @@ def apply(policy, sites, remove=False, global_blocks=None):
         if text != next_text:
             before[name] = text
             changes[name] = next_text
+    if captcha_enabled:
+        # Native ZIP updates need not invoke the activation hook. Provision
+        # the runtime as a normal prerequisite of applying CAPTCHA, before
+        # journaling or switching any website rules. Foreign units are rejected.
+        captcha_runtime.install(run)
     # Preserve policy + ownership manifest in the same recovery journal. A
     # crash after reload but before state commit restores the old policy too.
     mail_touched = str(webmail.SNIPPET) in changes or any(row['path'] == str(webmail.CUSTOM) for row in custom_changes)
@@ -167,14 +262,20 @@ def apply(policy, sites, remove=False, global_blocks=None):
               'policy.json': load('policy.json', None), 'manifest.json': load('manifest.json', None),
               'domain-ban-applied.json': load('domain-ban-applied.json', None),
               enumeration.MANIFEST: load(enumeration.MANIFEST, None),
+              access_protection.SETTINGS: access_settings(),
+              country_database.METADATA: geo_metadata(),
               'enumeration_changes': companion_changes, 'custom_changes': custom_changes,
               web_bans.APPLIED: load(web_bans.APPLIED, None),
               'custom-manifest.json': load('custom-manifest.json', None)}
+    if captcha_enabled or str(access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME) in old_paths:
+        record['captcha_enabled_before'] = str(access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME) in old_paths
     storage.replace(STATE / 'transaction.json', storage.json_bytes(record), 0o600)
     try:
         enumeration.apply(companion_changes)
         for name, text in changes.items():
-            storage.replace(name, None if text is None else text.encode(), 0o600)
+            replace_rule(Path(name), text)
+        if captcha_enabled:
+            captcha_runtime.enable(run)
         integration.write(custom_changes)
         verify([path for path in desired if path != str(webmail.SNIPPET)])
         if mail_enabled:
@@ -200,6 +301,11 @@ def apply(policy, sites, remove=False, global_blocks=None):
         storage.replace(STATE / 'manifest.json', storage.json_bytes(sorted(desired)), 0o600)
         storage.replace(STATE / 'policy.json', storage.json_bytes(policy), 0o600)
         storage.replace(STATE / enumeration.MANIFEST, storage.json_bytes(companion_manifest), 0o600)
+        storage.replace(STATE / access_protection.SETTINGS, storage.json_bytes(access), 0o600)
+        if geography:
+            storage.replace(STATE / country_database.METADATA, storage.json_bytes(metadata), 0o600)
+        if not captcha_enabled and str(access_protection.DIRECTORY / captcha_runtime.CONFIG_NAME) in old_paths:
+            captcha_runtime.disable(run)
         storage.replace(STATE / 'transaction.json', None)
         retire_domain_bans()
     except Exception as error:
@@ -217,6 +323,8 @@ def synchronize(policy, sites, remove=False):
     health = copy.deepcopy(load('maintenance.json', {}))
     health.update(last_attempt=time.time(), error='')
     try:
+        if not remove:
+            refresh_countries(policy, sites)
         if remove:
             auto_bans.cleanup(policy, sites, STATE, auto_bans.Native(webuzo.HOME, run, STATE))
         result = apply(policy, sites, remove=remove)
@@ -262,21 +370,30 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
     if owner is None:
         try:
             ban_status = auto_bans.report(STATE, policy['bans']['enabled'],
-                listing.get('bans_page', 1), listing.get('bans_view', 'active'))
+                listing.get('bans_page', 1), listing.get('bans_view', 'active'), per_page=listing.get('bans_per_page',50))
         except (OSError, ValueError) as error:
             ban_status = {'error': str(error)}
     wordpress_status = None
     if owner is None:
         try:
-            wordpress_status = wordpress.snapshot(STATE, run, live=wordpress_live, page=listing.get('wordpress_page', 1))
+            wordpress_status = wordpress.snapshot(STATE, run, live=wordpress_live, page=listing.get('wordpress_page', 1), per_page=listing.get('wordpress_per_page',50))
         except (OSError, ValueError) as error:
             wordpress_status = {'settings': wordpress.DEFAULT, 'loaded': wordpress_live, 'error': str(error)}
     maintenance = load('maintenance.json', {}) if owner is None else {}
     if maintenance.get('last_success'):
         maintenance['stale'] = time.time() - maintenance['last_success'] > 180
+    saved_access = access_settings()
+    access = access_protection.public(saved_access, {row['key'] for row in rows if row['kind'] != 'mail'})
+    owners = {row['owner'] for row in rows if row['kind'] != 'mail'} | ({owner} if owner is not None else set())
+    geography = country_database.status(STATE, storage.read) if STATE.exists() else {'available': False, 'configured': False}
+    if owner is not None:
+        geography = {k: v for k, v in geography.items() if k not in ('account_id', 'error')}
     return {'ok': True, 'version': VERSION, 'policy': policy if owner is None else {'mode': policy['mode']},
             'sites': rows, 'activity': metrics,
             'bans': ban_status,
+            'access': access, 'geography': geography,
+            'access_defaults': access_protection.public_profile(saved_access['defaults']) if owner is None else None,
+            'access_accounts': access_protection.public_accounts(saved_access, owners),
             'history': ban_history.settings(STATE),
             'maintenance': maintenance,
             'wordpress': wordpress_status,
@@ -300,7 +417,7 @@ def authorize(request):
     owner = account(request.get('owner', actor))
     if not admin and owner != actor:
         raise PermissionError('Another account cannot be selected')
-    if request.get('action') not in ('status', 'activity_start', 'activity_status', 'activity_cancel') and not admin:
+    if request.get('action') not in ('status', 'access_save', 'access_account_save', 'activity_start', 'activity_status', 'activity_cancel', 'review_export') and not admin:
         raise PermissionError('Only an administrator can change De-Noise settings')
     return admin, owner
 
@@ -351,15 +468,33 @@ def dispatch(request):
                 'install_job': f2b_install.status(STATE), 'wordpress': wordpress.snapshot(STATE, run), **extra}
     if request.get('action') in REVIEW_ACTIONS:
         admin, owner = authorize(request)
+        if request['action'] == 'review_mark':
+            if not admin or owner != request['actor']:
+                raise PermissionError('Review notes require the administrator context')
+            if set(request) - {'actor','owner','action','listing','kind','job','domain','item','mark'}:
+                raise ValueError('Only an exact report item can be reviewed')
+            return {'ok': True, 'mark': analysis_jobs.mark_review(STATE, request.get('job'), request['actor'],
+                request.get('kind'), request.get('domain'), request.get('item'), request.get('mark'))}
+        if request['action'] == 'review_export':
+            if set(request) - {'actor','owner','action','listing','kind','job','offset','domain','filters'}:
+                raise ValueError('Only review export selections can be submitted')
+            kind = request.get('kind')
+            central = admin and owner == request['actor']
+            if not central and kind != 'activity':
+                raise PermissionError('Only your own Activity can be exported')
+            return {'ok': True, 'export': analysis_jobs.export_review(STATE, request.get('job'), request['actor'],
+                kind=kind, owner=None if central else owner, domain=request.get('domain','all'), offset=request.get('offset',0), **({'filters': request['filters']} if 'filters' in request else {}))}
+        page_args = {'per_page': request['per_page']} if 'per_page' in request else {}
+        if 'filters' in request: page_args['filters'] = request['filters']
         if request['action'].startswith('activity_'):
-            if set(request) - {'actor', 'owner', 'action', 'minutes', 'job', 'page', 'listing'}:
+            if set(request) - {'actor', 'owner', 'action', 'minutes', 'job', 'page', 'listing', 'domain', 'per_page'}:
                 raise ValueError('Only activity selections can be submitted')
             scope = None if admin and owner == request['actor'] else owner
             arguments = dict(kind='activity', owner=scope)
             if request['action'] == 'activity_start':
                 job = analysis_jobs.start(STATE, None, request['actor'], 'all', request.get('minutes'), **arguments)
             elif request['action'] == 'activity_status':
-                job = analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), **arguments)
+                job = analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), domain=request.get('domain', 'all'), **arguments, **page_args)
             else:
                 job = analysis_jobs.cancel(STATE, request.get('job'), request['actor'], **arguments)
             return {'ok': True, 'job': job}
@@ -370,7 +505,7 @@ def dispatch(request):
                 raise ValueError('Only agent candidate selections can be submitted')
             return {'ok': True, 'candidates': analysis_jobs.agent_candidates(STATE, request.get('job'),
                 request['actor'], request.get('category'), request.get('offset', 0))}
-        if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page', 'offset'}:
+        if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page', 'offset', 'per_page', 'filters'}:
             raise ValueError('Only log-analysis selections can be submitted')
         for kind in ('agents', 'php_files'):
             if not request['action'].startswith(kind + '_'):
@@ -383,7 +518,7 @@ def dispatch(request):
                 job = analysis_jobs.start(STATE, None, request['actor'], request.get('target'),
                     request.get('minutes'), kind=kind)
             elif operation == 'status':
-                job = analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), kind=kind)
+                job = analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), kind=kind, **page_args)
             else:
                 job = analysis_jobs.cancel(STATE, request.get('job'), request['actor'], kind=kind)
             return {'ok': True, 'job': job}
@@ -391,7 +526,7 @@ def dispatch(request):
             return {'ok': True, 'job': analysis_jobs.start(STATE, None, request['actor'],
                 request.get('target'), request.get('minutes'), request.get('verify_google', False))}
         if request['action'] == 'log_scan_status':
-            return {'ok': True, 'job': analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1))}
+            return {'ok': True, 'job': analysis_jobs.status(STATE, request.get('job'), request['actor'], request.get('page', 1), **page_args)}
         if request['action'] == 'log_scan_cancel':
             return {'ok': True, 'job': analysis_jobs.cancel(STATE, request.get('job'), request['actor'])}
         return {'ok': True, 'analysis': log_analysis.review(collect(), request.get('target'),
@@ -401,12 +536,81 @@ def dispatch(request):
     policy = validate(load('policy.json', DEFAULT))
     sites = collect()
     listing = request.get('listing', {})
-    if (not isinstance(listing, dict) or set(listing) - {'bans_page','bans_view','domain_page','domain_view','wordpress_page'}):
+    if (not isinstance(listing, dict) or set(listing) - {'bans_page','bans_view','domain_page','domain_view','wordpress_page','bans_per_page','wordpress_per_page'}):
         raise ValueError('Invalid IP-list selection')
     for scope in ('bans', 'domain'):
         ban_history.selection(listing.get(scope + '_page', 1), listing.get(scope + '_view', 'active'))
     ban_history.selection(listing.get('wordpress_page', 1))
-    if action == 'history_clear':
+    for scope in ('bans','wordpress'):
+        list_sizes.size(listing.get(scope + '_per_page', 50))
+    if action in ('access_save', 'access_account_save', 'access_defaults_save'):
+        if set(request) - {'actor', 'owner', 'action', 'target', 'settings', 'password', 'listing', 'inherit', 'inherit_password'}:
+            raise ValueError('Only domain access controls can be submitted')
+        key = request.get('target')
+        central = admin and owner == request['actor']
+        if action == 'access_defaults_save':
+            if not central:
+                raise PermissionError('Only the administrator can change central access defaults')
+        elif action == 'access_account_save':
+            account(key)
+            if not central and key != owner:
+                raise PermissionError('Another account cannot be selected')
+            if central and key != request['actor']:
+                user = webuzo.users().get(key)
+                if user is None or user['suspended']:
+                    raise ValueError('Account is suspended or unavailable')
+        else:
+            known = {site['key']: site for site in sites if site.get('kind') != 'mail'}
+            if key not in known or (not central and known[key]['owner'] != owner):
+                raise PermissionError('This domain does not belong to the selected account')
+            site = known[key]
+            if not site['supported'] or site['suspended']:
+                raise ValueError('This domain is suspended or unsupported')
+        saved = access_settings()
+        for flag in ('inherit', 'inherit_password'):
+            if flag in request and type(request[flag]) is not bool:
+                raise ValueError('Access inheritance switches must be booleans')
+        collection = 'accounts' if action == 'access_account_save' else 'sites'
+        if action != 'access_defaults_save' and request.get('inherit'):
+            saved[collection].pop(key, None)
+        else:
+            entry = request.get('settings')
+            if not isinstance(entry, dict) or set(entry) != set(access_protection.DEFAULT) - {'password_hash'}:
+                raise ValueError('Invalid domain access controls')
+            entry = copy.deepcopy(entry)
+            previous = saved['defaults'] if action == 'access_defaults_save' else saved[collection].get(key, {})
+            entry['password_hash'] = previous.get('password_hash', '')
+            if action != 'access_defaults_save' and request.get('inherit_password'):
+                entry['password_hash'] = ''
+            if request.get('password'):
+                entry['password_hash'] = access_protection.password_hash(request['password'])
+            elif request.get('password') not in ('', None):
+                raise ValueError('Invalid HTTP password')
+            if action == 'access_defaults_save':
+                saved['defaults'] = entry
+            else:
+                saved[collection][key] = entry
+        apply(policy, sites, access=saved)
+    elif action in ('geoip_update', 'geoip_save'):
+        if not (admin and owner == request['actor']):
+            raise PermissionError('Country database management requires the administrator context')
+        if set(request) - {'actor', 'owner', 'action', 'account_id', 'license_key', 'automatic', 'listing'}:
+            raise ValueError('Only country database settings can be submitted')
+        raw = storage.read(STATE / country_database.CONFIG)
+        config = json.loads(raw) if raw else {}
+        config['account_id'] = request.get('account_id', '')
+        if request.get('license_key'):
+            config['license_key'] = request['license_key']
+        if type(request.get('automatic')) is not bool:
+            raise ValueError('Select the automatic country database update setting')
+        config['automatic'] = request['automatic']
+        config.setdefault('license_key', '')
+        country_database.validate_config(config)
+        if action == 'geoip_update':
+            geography = country_database.download(config)
+            apply(policy, sites, geography=geography)
+        storage.replace(STATE / country_database.CONFIG, storage.json_bytes(config), 0o600)
+    elif action == 'history_clear':
         scope = request.get('scope')
         if scope != 'global' or not (admin and owner == request['actor']):
             raise PermissionError('Only the administrator can clear global ban history')

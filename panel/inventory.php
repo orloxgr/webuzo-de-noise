@@ -5,7 +5,7 @@ $reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : 'Analyze PH
 ?>
 <section class="hdn-inventory u-mt20 u-mb20" aria-label="<?= $escape($reviewLabel) ?>">
 <h3 class="u-mb10"><?= $escape($reviewLabel) ?></h3>
-<form method="post" id="<?= $prefix ?>-scan" data-hdn-context="<?= $escape($actor . ':all') ?>">
+<form method="post" id="<?= $prefix ?>-scan" data-hdn-context="<?= $escape(($actor ?? ($headerOwner ?? '')) . ':all') ?>">
 <?php $fields($reviewKind . '_start'); ?>
 <div class="hdn-wp-grid">
 <label class="form-label">Domain

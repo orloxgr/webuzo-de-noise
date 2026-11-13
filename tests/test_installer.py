@@ -20,7 +20,7 @@ class InstallerTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
-        for name in ('state', 'etc', 'cron', 'rotate', 'tmpfiles'):
+        for name in ('state', 'etc', 'cron', 'rotate', 'tmpfiles', 'units'):
             (self.root / name).mkdir()
         self.state = self.root / 'state'; self.state.chmod(0o700)
         self.enterContext(patch.object(webuzo, 'STATE', self.state))
@@ -31,6 +31,9 @@ class InstallerTests(unittest.TestCase):
         self.enterContext(patch.object(installer.transport, 'DIRECTORY', self.root / 'requests'))
         for name, folder in (('CRON', 'cron'), ('ROTATE', 'rotate'), ('TMPFILES', 'tmpfiles')):
             self.enterContext(patch.object(installer, name, self.root / folder / 'webuzo-de-noise'))
+        self.enterContext(patch.object(installer.engine.captcha_runtime, 'UNITS', self.root / 'units'))
+        self.enterContext(patch.object(installer.engine.captcha_runtime, 'worker_group', return_value='root'))
+        self.commands = self.enterContext(patch.object(webuzo, 'run', return_value=''))
         binary = self.root / 'nginx'; binary.touch()
         self.enterContext(patch.object(webuzo, 'NGINX', binary))
         self.enterContext(patch.object(webuzo, 'collect', return_value=[]))
@@ -66,6 +69,25 @@ class InstallerTests(unittest.TestCase):
             installer.install()
         self.assertFalse(installer.CRON.exists())
         self.assertFalse((self.state / 'active.json').exists())
+        self.assertEqual(list((self.root / 'units').iterdir()), [])
+
+    def test_captcha_units_remain_inactive_until_configured_and_foreign_units_are_preserved(self):
+        runtime = installer.engine.captcha_runtime
+        path = runtime.UNITS / (runtime.NAME + '.socket')
+        path.write_text('# Administrator owned\n')
+        with self.assertRaisesRegex(ValueError, 'not owned'):
+            installer.install()
+        self.assertEqual(path.read_text(), '# Administrator owned\n')
+        self.apply.assert_not_called()
+        path.unlink()
+        installer.install()
+        self.assertIn('SocketMode=0660', path.read_text())
+        service = runtime.UNITS / (runtime.NAME + '.service')
+        self.assertIn('DynamicUser=yes', service.read_text())
+        self.assertIn('LoadCredential=', service.read_text())
+        commands = [call.args for call in self.commands.call_args_list]
+        self.assertFalse(any('enable' in command for command in commands))
+        self.assertIn(('/usr/bin/systemctl', 'try-restart', runtime.NAME + '.service'), commands)
 
     def test_failure_after_rules_rolls_back_activation_and_artifacts(self):
         with patch.object(installer.wordpress, 'install', side_effect=RuntimeError('service unavailable')):

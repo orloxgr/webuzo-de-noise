@@ -3,7 +3,7 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 
 $tabs = $isAdmin ? ['general' => 'General', 'agents' => 'User-Agents', 'endpoints' => 'Endpoints',
     'filters' => 'Filtered URLs', 'static' => 'Static files', 'bans' => 'IP bans',
-    'enumeration' => 'User enumeration', 'cron' => 'Cron', 'fail2ban' => 'Fail2ban', 'activity' => 'Activity'] : ['domains' => 'Domains', 'activity' => 'Activity'];
+    'enumeration' => 'User enumeration', 'access' => 'WP access', 'countries' => 'Countries', 'cron' => 'Cron', 'fail2ban' => 'Fail2ban', 'activity' => 'Activity'] : ['access' => 'WP access', 'domains' => 'Domains', 'activity' => 'Activity'];
 $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs);
 ?>
 <script>document.title = 'De-Noise';</script>
@@ -87,6 +87,10 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <?php require $install . '/panel/fail2ban.php'; ?>
 <?php elseif ($key === 'enumeration'): ?>
     <?php require $install . '/panel/enumeration.php'; ?>
+<?php elseif ($key === 'access'): ?>
+    <?php require $install . '/panel/access.php'; ?>
+<?php elseif ($key === 'countries'): ?>
+    <?php require $install . '/panel/countries.php'; ?>
 <?php elseif ($key === 'cron'): ?>
     <?php require $install . '/panel/cron.php'; ?>
 <?php elseif ($key === 'domains'): ?>
@@ -97,10 +101,11 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 </div>
 <?php endforeach; ?>
 </div>
-<?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['general', 'cron', 'fail2ban', 'activity'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
+<?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['general', 'cron', 'fail2ban', 'activity', 'access', 'countries'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
 <p class="u-mt20"><small>Version <?= $escape($meta['version']) ?></small></p>
 </div></div>
 <script type="application/json" id="hdn-agent-presets"><?= json_encode(array_map(static fn($category) => $category['entries'], $data['presets']['agent_categories'] ?? []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script type="application/json" id="hdn-probe-presets"><?= json_encode(['probe_files' => $data['presets']['probe_files'] ?? [], 'probe_queries' => $data['presets']['probe_queries'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+<script><?php readfile($install . '/panel/lists.js'); ?></script>
 <script><?php readfile($install . '/panel/settings.js'); ?></script>
 <?php if ($isAdmin): ?><script><?php readfile($install . '/panel/rules.js'); ?></script><script><?php readfile($install . '/panel/fail2ban.js'); ?></script><?php endif; ?>

@@ -33,6 +33,14 @@ def run(*args, timeout=90):
     return result.stdout
 
 
+def nginx_build():
+    # Nginx writes -V information to stderr even on success.
+    result = subprocess.run([str(NGINX), '-V'], env=ENV, capture_output=True, text=True, timeout=90)
+    if result.returncode:
+        raise RuntimeError('Could not read native Nginx build configuration')
+    return result.stdout + result.stderr
+
+
 def native_read(path):
     """Read panel-owned metadata without following links or trusting site owners."""
     panel = pwd.getpwnam('webuzo')
@@ -180,12 +188,18 @@ def servers():
                        'cache': uses_cache(children),
                        'includes': [v[0] for v in values.get('include', []) if len(v) == 1],
                        'limits': has_limits(children)})
+        result[-1]['authentication'] = has_authentication(children)
     return result
 
 
 def has_limits(nodes):
     return any(key.startswith('limit_req') or (child is not None and has_limits(child))
                for key, args, child in nodes)
+
+
+def has_authentication(nodes):
+    return any(key in ('auth_basic', 'auth_basic_user_file') or
+               (child is not None and has_authentication(child)) for key, args, child in nodes)
 
 
 def collect():
@@ -241,6 +255,7 @@ def collect():
                        'template': 'caching-webuzo-native' if any(b['cache'] for b in matches) else 'webuzo-native', 'kind': 'web',
                        'suspended': accounts[owner]['suspended'],
                        'supported': not reason, 'reason': reason,
+                       'native_authentication': any(b.get('authentication', False) for b in matches),
                        'paths': [str(snippet)] if not reason else [],
                        'roots': {str(snippet): root}, 'custom': str(custom),
                        'custom_domains': sorted({domain(b['names'][0]) for b in matches}),

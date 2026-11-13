@@ -11,8 +11,9 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
     </select><button class="button" type="submit">Apply to selected</button>
 </div>
 <?php endif; ?>
+<div data-hdn-list="Domains" data-hdn-columns='["Domain","Account","Mode","Template","Aliases"]'>
 <?php foreach ($data['sites'] ?? [] as $site): ?>
-<details class="box-collapse u-mb10">
+<details class="box-collapse u-mb10" data-hdn-list-row data-hdn-csv="<?= $escape(json_encode([$site['domain'],$site['owner'],$site['mode'],$site['template'],$site['aliases']])) ?>">
     <summary class="box-collapse-header">
         <?php if ($isAdmin): ?><input class="hdn-target" type="checkbox" name="targets[]" value="<?= $escape($site['key']) ?>" aria-label="Select <?= $escape($site['domain']) ?>"><?php endif; ?>
         <?= $escape($site['domain']) ?> · <?= $escape($site['owner']) ?> · <?= $escape(!$site['supported'] ? 'Unsupported' : ($site['suspended'] ? 'Suspended' : ucfirst($site['mode']))) ?>
@@ -24,6 +25,6 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
         <?php if ($site['reason'] !== ''): ?><p><?= $escape($isAdmin ? $site['reason'] : 'This template is not currently supported.') ?></p><?php endif; ?>
     </div>
 </details>
-<?php endforeach; ?>
+<?php endforeach; ?></div>
 <?php if ($isAdmin): ?></form><?php endif; ?>
 <?php if (empty($data['sites'])): ?><p>No domains to display.</p><?php endif; ?>

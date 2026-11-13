@@ -34,7 +34,10 @@ covers native Nginx, WordPress, Fail2ban, panel access, rollback and browser beh
 | WordPress failed-login bans and escalation | Namespaced native Fail2ban jail; requires WordPress syslog events | Real WordPress HTTP logins: three native ban stages, exact permanent sentinel, automatic expiry, web-port blocking, SSH accessibility and unban; requires working logging and client-IP setup |
 | User enumeration and author archives | Nginx and scoped WordPress companion | Real WordPress tests: anonymous, forged credentials, authenticated REST, editor and reset flows |
 | HTTP webmail protection | Documented EMPS custom include; native proxy routes and custom webmail ports | Native Enforce/Observe/Off, private-file and agent blocks; real Roundcube mailbox login and assets remain functional. Native custom HTTP/HTTPS webmail ports, invalid-candidate rollback, deactivation/reactivation and administrator-only activity verified |
-| Activity and declared User-Agent details | Plugin-owned logs | Native activity preserves full declared agents; complete pagination and owner-context tests |
+| Activity, saved time windows and per-site filtering | Plugin-owned logs and saved report database | Exact absolute time range, filtered counts and pagination without rescanning; owner/job isolation, escaped agents and grouped blocked/matched outcomes |
+| WordPress HTTP password and profile inheritance | Native Nginx authentication in documented Webuzo custom includes | Central → account → domain precedence; independent password inheritance, owner/suspended-account rejection, subdirectory paths, frontend handler exceptions and existing-authentication conflict checks |
+| Local CAPTCHA administration gate | Socket-activated DynamicUser service; Nginx secure_link cookie validation | Real Webuzo Nginx challenge/verification, single-use/expired/tampered tokens, host/protocol isolation, direct POST exclusion, wrong answers without bans and post-verification confirmation document |
+| Country access policies | Local GeoLite2 IPv4/IPv6 data and native Nginx geo maps | Administration/whole-site allow/deny rules, unknown-country policy, ACME exemption, credential-safe download redirects and retention of working data after failure |
 | On-demand log analysis and crawler verification | Native domain logs | Native administrator AJAX job completes across two domains; published Google ranges checked, 35 declared Googlebot requests from an unverified address remain unconfirmed; policy unchanged |
 | Cron schedule preview/apply/restore | Native Webuzo cron API | Native runtime: preview unchanged, apply, exact restore and rejection of stale preview |
 | Administrator and account views | Native panel authentication and CSRF | Two account sessions: own domains, cross-account and global-action rejection, scoped AJAX. Browser checks cover native menu navigation, working tabs, owner-only domains and completed Activity review |
@@ -46,3 +49,58 @@ covers native Nginx, WordPress, Fail2ban, panel access, rollback and browser beh
 | Disable, deactivate, uninstall and upgrade | Native plugin lifecycle | Cold install with source/state/configuration/logs/queue absent starts with empty Observe defaults. Native activation, enforcement, deactivation and original-installation restoration pass 15 HTTP/state/configuration checks. Deactivation removes website/webmail rules, both custom blocks and maintenance. Native ZIP update preserves the exact active policy and normal requests. Stale-bytecode regression verified |
 | Core/template integrity and rebuild persistence | Hash comparison and native rebuild | Original 598 PHP sources unchanged. Native virtual-host rebuild and reboot preserve website and shared webmail rules; ordinary Roundcube login remains available. Official Webuzo updater ran on current 4.9.1; no newer-version transition was available |
 | Cross-account isolation and hostile input | Runtime security tests | Native settings hashes remain unchanged after forbidden requests; each completed account report excludes the other account; foreign job status/cancellation rejected. Direct PHP template access denied |
+
+The upstream Hestia firewall-reconciliation feature is not copied as Hestia CLI
+or firewall commands. Webuzo website bans use this addon's Nginx geo map, already
+reapplied by its maintenance synchronization. Authentication jails remain managed
+through Fail2ban with the existing CSF/LFD checks. Additional user-managed domain
+automatic bans remain removed.
+
+## Version 0.4.2 validation
+
+- 376 Python tests passed with the native Webuzo Nginx; seven optional WordPress
+  enumeration-fixture tests were not run in this pass.
+- 38 JavaScript tests passed, including saved Activity filtering and access-form controls.
+- 41 additional checks passed against the installed addon in the isolated Webuzo
+  environment: native account forms and CSRF, real HTTP password/CAPTCHA/country
+  responses, restricted systemd service/socket, CLI virtual-host rebuild, and native
+  plugin-manager deactivation/reactivation with exact profile restoration.
+- Panel PHP syntax passed with Webuzo EMPS PHP 7.4; all 37 Python modules parse
+  with Python 3.9 syntax. Webuzo core PHP sources and templates were unchanged.
+
+Country lookup was exercised using a synthetic local database and GeoLite2 CSV
+fixtures. A download with real MaxMind credentials was not performed.
+
+List controls offer 20, 50, 100, 500 or All records. CSV exports cover complete
+saved/filtered lists, regardless of the displayed page. Agent CSV retains its
+agent/hits format. PHP 404 groups preserve exact member paths, evidence and
+source-domain counts; CSV expands all members rather than exporting group labels
+as paths. CSV values are quoted and spreadsheet formula prefixes neutralized.
+Native panel checks cover every PHP page size, grouped exact-path export,
+CSV response headers without HTML, owner/administrator isolation and unchanged
+policy/access settings. Large-record tests cover 1,508 display entries, 1,009
+exported PHP paths and more than 500 active/history bans.
+
+CAPTCHA applies reconcile the owned systemd units before switching website rules,
+including upgrades performed by uploading a ZIP without reactivation. Rollback
+restores the previous socket state before clearing its journal. Missing units
+are already stopped; genuine systemd failures retain the journal for retry.
+Foreign unit files are rejected before website configuration changes.
+
+The missing-unit error and its secondary recovery error were reproduced with the
+previous package on the isolated Webuzo installation. An upload-only update
+(no activation hook) then passed 12 native panel/HTTP checks: Save CAPTCHA
+provisioning, a listening private socket, unprivileged worker, challenge/answer,
+clearance/tamper handling, native virtual-host rebuild and journal completion.
+The original test-environment policy, access profiles and unit files were restored.
+
+## Findings review in 0.4.3
+
+- Independent path characteristics and review priorities with explicit evidence.
+- Fake login/core filenames inside themes, uploads and library paths no longer inherit the application-route label from their basename.
+- Root-private client/path correlations count cross-domain and multi-path activity without saving client IP addresses.
+- Filters operate on complete saved reports before pagination; CSV exports the same filtered exact entries, including grouped members.
+- Reviewed/ignored/reopened notes persist per exact domain/path and never change protection policy. Ignored items remain available through the review-state filter.
+- Rejected secret-file probes can be summarized by domain while preserving exact paths, review controls and full CSV records.
+- Cron/cache transport tokens no longer inflate filter diversity. Known WooCommerce, Complianz and UltraCache endpoints show the work being performed.
+- Log-review CSV includes parameter names, methods, declared agents, event times and source filenames when recorded. Existing reports are read without rewriting their saved counts or inventing unavailable evidence.

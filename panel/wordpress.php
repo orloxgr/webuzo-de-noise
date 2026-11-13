@@ -32,18 +32,21 @@ $wpTimes = $wpSettings['durations'];
 <button class="button u-mb20" type="submit" title="Validate the generated Fail2ban configuration and apply this WordPress jail.">Save &amp; Apply WordPress protection</button>
 </form>
 <h3 class="u-mb10">Status and bans</h3>
-<div id="hdn-wordpress-status" data-loaded="<?= !empty($wpStatus['loaded']) ? 'true' : 'false' ?>">
+<div id="hdn-wordpress-status" data-hdn-remote-list="wordpress" data-loaded="<?= !empty($wpStatus['loaded']) ? 'true' : 'false' ?>">
 <?php if (!empty($wpStatus['error'])): ?><div class="alert alert-danger u-mb20" role="alert"><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $escape($wpStatus['error']) ?></pre></div><?php endif; ?>
 <?php if (!empty($wpStatus['loaded']) && !empty($wpStatus['available'])): ?>
 <p class="u-mb20">Fail2ban jail: <strong><?= !empty($wpStatus['active']) ? 'Active' : 'Inactive' ?></strong> · Banned IPs: <?= $escape($wpStatus['pagination']['total'] ?? count($wpStatus['ips'] ?? [])) ?></p>
 <?php endif; ?>
 <form method="post" id="hdn-wordpress-refresh"><?php $fields('wordpress_status'); ?><button type="submit" class="button button-secondary u-mb20" title="Read the current WordPress jail and bans from Fail2ban. Status is read only when requested.">Refresh status</button></form>
 <?php if (!empty($wpStatus['loaded'])): $wpPage = $wpStatus['pagination'] ?? ['page'=>1,'pages'=>1]; ?>
-<form method="post" class="hdn-ban-pager u-mb20"><?php $fields('wordpress_status'); ?>
-<span>Page <?= $escape($wpPage['page']) ?> / <?= $escape($wpPage['pages']) ?> · 50 IPs per page</span>
-<?php if ($wpPage['page'] > 1): ?><button class="button button-secondary" type="submit" name="wordpress_target_page" value="<?= $escape($wpPage['page']-1) ?>" title="Read Fail2ban status and display the previous 50 IPs.">Previous</button><?php endif; ?>
-<?php if ($wpPage['page'] < $wpPage['pages']): ?><button class="button button-secondary" type="submit" name="wordpress_target_page" value="<?= $escape($wpPage['page']+1) ?>" title="Read Fail2ban status and display the next 50 IPs.">Next</button><?php endif; ?>
-</form><?php endif; ?>
+<?php $wpUrl = static fn($changes) => '?' . $escape(http_build_query(array_merge($listing, ['act'=>'webuzo-de-noise','tab'=>'fail2ban','wordpress_read'=>1],$changes))); ?>
+<nav class="hdn-list-controls u-mb20">
+<label>Show per page <select class="form-select" data-hdn-remote-size="wordpress"><?php foreach ([20,50,100,500,'all'] as $size): ?><option value="<?= $size ?>" <?= ($wpPage['per_page'] ?? 50) === $size ? 'selected' : '' ?>><?= $size === 'all' ? 'All' : $size ?></option><?php endforeach; ?></select></label>
+<span>Page <?= $escape($wpPage['page']) ?> / <?= $escape($wpPage['pages']) ?></span>
+<?php if ($wpPage['page'] > 1): ?><a class="button button-secondary" data-hdn-remote-page href="<?= $wpUrl(['wordpress_page'=>$wpPage['page']-1]) ?>">Previous</a><?php endif; ?>
+<?php if ($wpPage['page'] < $wpPage['pages']): ?><a class="button button-secondary" data-hdn-remote-page href="<?= $wpUrl(['wordpress_page'=>$wpPage['page']+1]) ?>">Next</a><?php endif; ?>
+<a class="button button-secondary" href="<?= $wpUrl(['download_list'=>'wordpress']) ?>">Download CSV</a>
+</nav><?php endif; ?>
 <?php if (!empty($wpStatus['ips'])): ?>
 <form method="post"><?php $fields('wordpress_unban'); ?>
 <?php foreach ($wpStatus['ips'] as $address): ?><label class="form-label u-block u-mb10"><input type="checkbox" name="wordpress_ips[]" value="<?= $escape($address) ?>"> <?= $escape($address) ?></label><?php endforeach; ?>

@@ -37,13 +37,23 @@ protect SSH, mailbox authentication, SMTP authentication and FTP on their detect
 
 Use **Analyze current agents** in User-Agents or **Analyze PHP 404s** under
 selected PHP file bans to inspect recorded traffic. Select results and choose
-**Append selected to lists**, then **Save & Apply**. **Export CSV** downloads all
-agent names and hit counts from the completed analysis, across every result page.
+**Append selected to lists**, then **Save & Apply**. **Download CSV** downloads all
+results in the selected list and current site filter, across every result page.
+Every data list offers **20 / 50 / 100 / 500 / All** records per page. Changing
+pages keeps unsaved settings; it does not start a new log review. Agent CSV keeps
+its two columns: agent and hits.
+
+PHP 404 analysis explains bundled probe signatures, application/WordPress routes,
+unknown paths and repeated directory patterns. Repeated directories share an
+expandable group with exact paths, source domains, requesting agents, distinct
+client counts and first/last-seen times. Grouping changes the presentation only:
+select individual exact paths to append, and review the rules before saving.
+PHP CSV includes every exact path and its hits, domains, interpretation and times.
 The **Bot information** column shows the operator or tool project, its purpose,
 practical uses for your site (such as search discovery, link previews or SEO
 audits), and a source link. Unidentified declarations stay marked as unconfirmed.
 This bundled reference also appears on existing completed reports; no new scan
-or external lookup is needed to display it. CSV keeps its two agent/hits columns.
+or external lookup is needed to display it.
 
 Each User-Agent list also has **Append analyzed agents**. It adds recognized
 names in that category from the entire completed analysis, across every result
@@ -67,7 +77,8 @@ in their account panel to view their domains and activity. All protection settin
 are managed by the hosting administrator.
 
 Upload a newer ZIP through the same plugin manager to update. Settings are
-preserved. Deactivate the plugin before removing its source directory; deactivation
+preserved. Saving CAPTCHA protection installs any missing companion systemd
+units automatically; reactivation is not required. Deactivate the plugin before removing its source directory; deactivation
 removes its filtering rules and scheduled maintenance while retaining settings
 and history for reactivation.
 
@@ -124,6 +135,51 @@ De-Noise-owned jails, leaving the Fail2ban package, service and unrelated jails.
 The former additional domain-only automatic-ban feature has been removed.
 Upgrading drops its rules and stored bans; central website protections remain.
 
+## WordPress administration access and countries
+
+Open **WP access** to choose an extra **HTTP username / password** or a local
+image **CAPTCHA** for direct requests to `wp-login.php` and `wp-admin`, including
+WordPress installations in subdirectories. These checks run before WordPress;
+they require no WordPress plugin or external CAPTCHA service. Shop account,
+checkout, AJAX and public form-handler routes remain outside the gate.
+
+The administrator sets **Central defaults**. Each hosting account and domain can
+**Inherit parent settings** or choose a custom profile, including explicit Off.
+HTTP passwords can inherit separately; only salted hashes are stored. Hosting
+users can change only their own account and domain profiles. De-Noise domain
+modes still apply: **Enforce** activates the checks, **Observe** records candidates
+and **Off** bypasses them. New installations leave these checks disabled.
+
+**Bypass for internal requests** allows requests declaring the exact same origin
+through browser Fetch Metadata or, if absent, an exact-origin Referer. This is a
+compatibility option, not proof of a trusted client: WordPress authentication
+remains necessary. Turn it off to require the extra check for every protected
+request. Existing administrator HTTP authentication is reported as a conflict
+before enabling a gate.
+
+CAPTCHA verification is remembered for **six hours by default**, configurable in
+seconds. Its signed cookie is tied to the exact hostname and protocol. Incorrect
+answers do not create IP bans. Submitted WordPress forms are never replayed;
+visitors submit them again after verification. A socket-activated service handles
+only the local challenge; Nginx validates subsequent cookies directly with its
+[secure_link module](https://nginx.org/en/docs/http/ngx_http_secure_link_module.html).
+The service uses a restricted dynamic system user and a private Unix socket,
+with no public listener. It starts only when CAPTCHA protection is configured.
+
+Country filtering is independent of the password/CAPTCHA choice. Select countries
+to block or allow, choose administration paths or the entire site, and decide how
+unknown locations are handled. Unknown locations are allowed by default; ACME
+certificate validation is exempt. Rejections return HTTP 403 without a firewall
+ban. Whole-site filtering also affects customers, APIs and payment callbacks.
+
+The administrator configures a MaxMind account ID and GeoLite2 license key in
+**Countries**, then downloads the country database once for the server. Visitor
+requests use local IPv4/IPv6 data and send no visitor information to MaxMind.
+Automatic weekly updates use the existing maintenance job when a country filter
+is active; a failed download retains the previous working database. No GeoIP
+Nginx module or WordPress plugin is installed. The license key remains in
+root-only state and is not returned to the panel.
+
 ## WordPress user-enumeration protection
 
 - **Enable user-enumeration protection** is the main switch for the selected
@@ -177,6 +233,7 @@ hosting accounts retain access only to their own website activity.
 
 - Webuzo with its native website Nginx running and custom domain includes enabled.
 - Python 3.9 or later with SQLite support, available as `/usr/bin/python3`.
+- CAPTCHA additionally uses SQLite 3.35 or later and Nginx `secure_link` support.
 - Administrator access to install the plugin through Webuzo's plugin manager.
 
 Validated on Webuzo 4.9.1 with Ubuntu 24.04 and native Nginx. The
@@ -196,3 +253,11 @@ GPL-3.0-or-later. Author: Byron Iniotakis — https://www.iniotakis.com.
 This project is an independent third-party integration. It is not affiliated
 with, endorsed, sponsored, or supported by Webuzo or Softaculous. The Webuzo name
 is used only to describe compatibility with the hosting platform.
+
+### Reviewing findings
+
+PHP 404 inventories separate URL characteristics from review priority. A repeated directory, diagnostic filename or application-shaped URL can carry several characteristics. Client/path and cross-domain correlations explain why an item deserves attention; they never create a ban automatically. Original URLs remain separate when selecting exact file rules.
+
+Log and PHP reviews have domain, priority, characteristic, review-state, path and minimum-hit filters. PHP reviews also filter by minimum domain count. Filters apply before pagination; CSV exports every matching exact result across all pages. Already rejected secret-file probes can be grouped by domain and expanded without losing their individual URLs.
+
+Mark reviewed, Ignore in findings and Reopen apply to one exact path on one domain, including future reviews. These root-private notes do not change protection settings or create allowlist exceptions. Ignored entries remain accessible through the review-state filter. Agents, request methods, parameter names and event times provide context in the log-review CSV. Known cron/cache transport parameters do not inflate content-filter diversity. WooCommerce, Complianz and UltraCache endpoints identify the work being performed.

@@ -129,18 +129,23 @@ def install():
         previous_active = engine.load('active.json', None)
         sites = engine.collect()
         policy = engine.validate(engine.load('policy.json', engine.DEFAULT))
-        result = engine.apply(policy, sites)
+        previous_units = engine.captcha_runtime.install(webuzo.run)
+        applied = False
         try:
+            result = engine.apply(policy, sites)
+            applied = True
             for path, data in desired.items():
                 owned_artifact(path, data)
             storage.replace(webuzo.STATE / 'active.json', storage.json_bytes({'active': True}), 0o600)
             wordpress.install(webuzo.STATE, webuzo.run)
+            engine.captcha_runtime.refresh(webuzo.run)
         except Exception:
             for path, data in before.items():
                 storage.replace(path, data, 0o644)
             storage.replace(webuzo.STATE / 'active.json', None if previous_active is None else storage.json_bytes(previous_active), 0o600)
-            if not previous_active or previous_active.get('active') is not True:
+            if applied and (not previous_active or previous_active.get('active') is not True):
                 engine.apply(policy, sites, remove=True)
+            engine.captcha_runtime.restore_units(previous_units, webuzo.run)
             raise
         retired = retire_source()
     return {'ok': True, 'retired_source': retired, **result}
@@ -160,6 +165,7 @@ def remove():
         if preference is not None:
             storage.replace(webuzo.STATE / wordpress.SETTINGS, storage.json_bytes(preference), 0o600)
         result = engine.synchronize(policy, engine.collect(), remove=True)
+        engine.captcha_runtime.uninstall(webuzo.run)
         for path in artifacts():
             owned_artifact(path, None)
         storage.replace(webuzo.STATE / 'active.json', storage.json_bytes({'active': False}), 0o600)

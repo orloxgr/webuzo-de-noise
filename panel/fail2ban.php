@@ -80,7 +80,7 @@ $activationBlocked = !empty($f2b['service_activation_blocked']);
 <?php if (!empty($serviceInfo['ips'])): ?>
 <details><summary class="u-mb10">Banned IPs: <?= count($serviceInfo['ips']) ?></summary>
 <form method="post"><?php $fields('fail2ban_unban'); ?><input type="hidden" name="service" value="<?= $escape($service) ?>">
-<div class="hdn-service-ips u-mb10"><?php foreach ($serviceInfo['ips'] as $ip): ?><label class="form-label u-block"><input type="checkbox" name="service_ips[]" value="<?= $escape($ip) ?>"> <?= $escape($ip) ?></label><?php endforeach; ?></div>
+<div class="hdn-service-ips u-mb10" data-hdn-list="<?= $escape($service) ?> banned IPs" data-hdn-columns='["IP"]'><?php foreach ($serviceInfo['ips'] as $ip): ?><label class="form-label u-block" data-hdn-list-row><input type="checkbox" name="service_ips[]" value="<?= $escape($ip) ?>"> <?= $escape($ip) ?></label><?php endforeach; ?></div>
 <button class="button button-secondary" type="submit">Unban selected IPs</button></form></details>
 <?php endif; ?>
 </div></section>

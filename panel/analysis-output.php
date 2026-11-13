@@ -16,7 +16,10 @@ Records: <?= $escape($analysis['totals']['requests'] ?? 0) ?> · Domains: <?= $e
 <?php if (!empty($analysis['unavailable_domains'])): ?><p class="u-mb10">No recent readable log sample: <?= $escape(implode(', ', $analysis['unavailable_domains'])) ?>.</p><?php endif; ?>
 <?php foreach ($analysis['errors'] ?? [] as $row): ?><p class="u-mb10"><?= $escape($row['domain'] . ' · ' . $row['file'] . ': ' . $row['message']) ?></p><?php endforeach; ?>
 <?php if (empty($analysis['findings'])): ?><p class="u-mb10">No suggestions met the review thresholds in the selected window. This does not prove safety, absence of traffic or complete coverage.</p><?php endif; ?>
+<?php require __DIR__ . '/review-filters.php'; ?>
+<?php $reviewPage = $analysis; require __DIR__ . '/review-pagination.php'; ?>
 <?php foreach ($analysis['findings'] ?? [] as $finding): ?>
+<?php if (!empty($finding['grouped_probes'])) { require __DIR__ . '/rejected-probes.php'; continue; } ?>
 <article class="hdn-analysis-finding u-mt20 u-mb20">
 <h4 class="u-mb10"><?= $escape(ucfirst($finding['kind']) . ' · ' . $finding['title']) ?></h4>
 <p class="u-mb10"><strong><?= $escape($finding['domain']) ?></strong> · <code><?= $escape($finding['path']) ?></code></p>
@@ -29,7 +32,12 @@ distinct clients: <?= $escape($finding['clients']) ?> · parameter combinations:
 <p class="u-mb10">Request timing: <?= $finding['mean_request_ms'] === null ? 'not recorded' : $escape($finding['mean_request_ms'] . ' ms mean, ' . $finding['request_time_samples'] . ' recorded samples') ?>.
 Upstream timing: <?= $finding['mean_upstream_ms'] === null ? 'not recorded' : $escape($finding['mean_upstream_ms'] . ' ms mean, ' . $finding['upstream_time_samples'] . ' recorded samples') ?>.
 Cache: <?= $finding['cache'] ? $escape(implode(' · ', array_map(static fn($key, $count) => $key . ': ' . $count, array_keys($finding['cache']), $finding['cache']))) : 'not recorded' ?>.</p>
+<?php $reviewRow = $finding; require __DIR__ . '/review-info.php'; ?>
+<?php if (!empty($finding['endpoint_work'])): ?><p><strong>Application work:</strong> <?= $escape(implode(' · ', $finding['endpoint_work'])) ?></p><?php endif; ?>
+<p>Methods: <?= $escape(json_encode($finding['methods'] ?? [])) ?><?php if (isset($finding['first'],$finding['last'])): ?> · <?= $escape(gmdate('Y-m-d H:i:s',(int)$finding['first'])) ?> – <?= $escape(gmdate('Y-m-d H:i:s',(int)$finding['last'])) ?> UTC<?php endif; ?></p>
+<?php if (!empty($finding['log_sources'])): ?><p>Native access logs: <?= $escape(implode(', ', $finding['log_sources'])) ?></p><?php endif; ?>
 <p><?= $escape($finding['advice']) ?></p>
+<?php require __DIR__ . '/review-note-controls.php'; ?>
 <?php if (!empty($finding['recommendations'])): ?>
 <h5 class="u-mt10 u-mb10">Suggested next steps · <?= $escape($finding['domain']) ?></h5>
 <ol><?php foreach ($finding['recommendations'] as $step): ?><li class="u-mb10"><strong><?= $escape($step['title']) ?></strong> — <?= $escape($step['detail']) ?></li><?php endforeach; ?></ol>
@@ -44,14 +52,9 @@ Observed crawler names: <code><?= $escape($candidate['observed_crawlers'] ? impl
 <?php endif; ?>
 </article>
 <?php endforeach; ?>
-<?php if (($analysis['pages'] ?? 1) > 1): ?>
-<nav aria-label="Analysis result pages" class="u-mt20 u-mb20">
-<?php if ($analysis['page'] > 1): ?><button type="button" class="button button-secondary" title="Read this result page without restarting the review or changing protection settings." data-hdn-analysis-page="<?= $analysis['page'] - 1 ?>">Previous findings</button><?php endif; ?>
-<span>Page <?= $escape($analysis['page']) ?> of <?= $escape($analysis['pages']) ?></span>
-<?php if ($analysis['page'] < $analysis['pages']): ?><button type="button" class="button button-secondary" title="Read this result page without restarting the review or changing protection settings." data-hdn-analysis-page="<?= $analysis['page'] + 1 ?>">Next findings</button><?php endif; ?>
-</nav><?php endif; ?>
+
 <h4 class="u-mt20 u-mb10">Read coverage</h4>
-<div class="hdn-scoped-table-wrap"><table class="table"><thead><tr><th>Domain / native log</th><th>Records in window</th><th>Coverage</th></tr></thead><tbody>
+<div class="hdn-scoped-table-wrap"><table class="table" data-hdn-list="Log coverage"><thead><tr><th>Domain / native log</th><th>Records in window</th><th>Coverage</th></tr></thead><tbody>
 <?php foreach ($analysis['coverage'] ?? [] as $row): ?>
 <tr><td><?= $escape($row['domain'] . ' · ' . $row['source'] . '/' . $row['file']) ?></td><td><?= $escape($row['records']) ?></td><td><?= $escape((!empty($row['partial']) ? 'Partial · ' : '') . $row['note']) ?></td></tr>
 <?php endforeach; ?></tbody></table></div>

@@ -51,7 +51,7 @@ class Jobs(unittest.TestCase):
         self.assertEqual(result['findings_total'], 65)
         analysis_jobs.write(path, 'result.json', result)
         analysis_jobs.write(path, 'status.json', {'state':'complete'})
-        pages = [analysis_jobs.status(self.root,job,'admin',page)['analysis'] for page in (1,2,3,4)]
+        pages = [analysis_jobs.status(self.root,job,'admin',page,filters={'group_rejected':False})['analysis'] for page in (1,2,3,4)]
         self.assertEqual([len(page['findings']) for page in pages], [20,20,20,5])
         self.assertEqual(len({item['path'] for page in pages for item in page['findings']}),65)
 
@@ -162,3 +162,48 @@ class Jobs(unittest.TestCase):
         os.waitpid(pid,0)
         self.assertEqual(analysis_jobs.status(self.root,result['id'],'admin')['state'],'cancelled')
         self.assertFalse((path/'result.json').exists())
+
+    def test_activity_site_filter_covers_all_pages_without_rescan_or_scope_leak(self):
+        import activity, datetime, hashlib
+        with patch.object(analysis_jobs, 'launch_worker') as launch:
+            launch.return_value=99999999
+            job=analysis_jobs.start(self.root, [], 'admin', 'all', 17, kind='activity', owner='alice')['id']
+        path=analysis_jobs.directory(self.root,job)
+        request=analysis_jobs.read(path,'request.json')
+        stamp=datetime.datetime.fromtimestamp(request['requested_at']-5,datetime.timezone.utc).isoformat()
+        log=self.root/'matches.log'
+        log.write_text((f'{stamp} one.test agent - 403 enforce\t"Applebot"\n'*41)+
+                       (f'{stamp} two.test login - 200 enforce\t"Other client"\n'*63)+
+                       f'{stamp} foreign.test agent - 403 enforce\t"Private foreign agent"\n')
+        with patch.object(activity,'LOG',log):
+            report=activity.summary({'one.test','two.test'},request['requested_at'],17,report_path=path/'report.sqlite')
+        del report['window_start'];del report['window_end']  # Existing saved report, before this release.
+        analysis_jobs.write(path,'result.json',report)
+        analysis_jobs.write(path,'status.json',dict(state='complete'))
+        before={name:hashlib.sha256((path/name).read_bytes()).hexdigest() for name in ('result.json','report.sqlite','request.json')}
+        with patch.object(activity,'summary',side_effect=AssertionError('Unexpected rescan')), \
+             patch.object(log_analysis,'scan',side_effect=AssertionError('Unexpected rescan')):
+            pages=[analysis_jobs.status(self.root,job,'admin',page,kind='activity',owner='alice',domain='one.test')['analysis'] for page in (1,2,3)]
+            exported=analysis_jobs.export_review(self.root,job,'admin',kind='activity',owner='alice',domain='one.test')
+            self.assertEqual(len(exported['rows']),41)
+            self.assertEqual({row[1] for row in exported['rows']},{'one.test'})
+            self.assertIsNone(exported['next_offset'])
+            for foreign in ('foreign.test', "one.test' OR 1=1 --"):
+                self.assertEqual(analysis_jobs.export_review(self.root,job,'admin',kind='activity',owner='alice',domain=foreign)['rows'],[])
+            with self.assertRaises(PermissionError): analysis_jobs.export_review(self.root,job,'admin',kind='activity',owner='bob')
+            other=analysis_jobs.status(self.root,job,'admin',kind='activity',owner='alice',domain='two.test')['analysis']
+            all_sites=analysis_jobs.status(self.root,job,'admin',kind='activity',owner='alice')['analysis']
+            for domain in ('foreign.test',"one.test' OR 1=1 --"):
+                empty=analysis_jobs.status(self.root,job,'admin',kind='activity',owner='alice',domain=domain)['analysis']
+                self.assertEqual((empty['total'],empty['findings'],empty['rows']),(0,[],[]))
+        self.assertEqual([len(page['findings']) for page in pages],[20,20,1])
+        for page in pages:
+            self.assertEqual((page['total'],page['pages'],page['review_total']),(41,3,104))
+            self.assertEqual({row['domain'] for row in page['findings']+page['rows']},{'one.test'})
+            self.assertEqual(datetime.datetime.fromisoformat(page['window_end']).timestamp(),int(request['requested_at']))
+        self.assertEqual(other['total'],63)
+        self.assertEqual(all_sites['total'],104)
+        self.assertNotIn('Private foreign agent',json.dumps(all_sites))
+        self.assertEqual(before,{name:hashlib.sha256((path/name).read_bytes()).hexdigest() for name in before})
+        with self.assertRaises(PermissionError):
+            analysis_jobs.status(self.root,job,'admin',kind='activity',owner='bob',domain='one.test')

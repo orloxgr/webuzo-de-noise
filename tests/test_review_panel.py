@@ -101,3 +101,37 @@ class ReviewPanelTests(unittest.TestCase):
         body = self.render('inventory-output.php', analysis)
         self.assertNotIn('javascript:', body)
         self.assertNotIn('>Source</a>', body)
+
+    def test_activity_groups_outcomes_and_shows_saved_absolute_window(self):
+        rows=[dict(domain='one.test',rule='filter-limit-one',agent='Mozilla/5.0 Applebot/0.1',outcome=outcome,count=count)
+              for outcome,count in (('blocked',105),('matched',75))]
+        body=self.render('activity-output.php',dict(window_minutes=15,total=180,rows=rows,findings=[],
+            window_start='2026-11-04T06:17:52+02:00',window_end='2026-11-04T06:32:52+02:00',selected_domain='one.test'))
+        self.assertEqual(body.count('Applebot (declared)'),1)
+        self.assertIn('2026-11-04T06:17:52+02:00',body)
+        self.assertIn('2026-11-04T06:32:52+02:00',body)
+        self.assertIn('Blocked by De-Noise',body)
+        self.assertIn('No block recorded',body)
+        self.assertIn('Filtered URL rate limit',body)
+        self.assertNotIn('last 15 minutes',body)
+        self.assertIn('does not by itself mean an IP ban',body)
+        self.assertIn('<strong>105</strong>',body)
+        self.assertIn('<strong>75</strong>',body)
+
+    def test_php_groups_explain_evidence_and_select_only_escaped_exact_members(self):
+        member=dict(value='/images/images/cache.php', candidate='/images/images/cache.php', count=2,
+                    domains=[dict(domain='a.test',count=2)], php_info=dict(append_reason=''))
+        row=dict(value='/images/cache.php',candidate=None,category='',count=2,domains=member['domains'],
+                 clients=1, first=1000,last=1002, agents=[dict(agent='Scanner <script>bad</script>',count=2)],
+                 php_info=dict(label='Repeated directory path group',reason='Review exact paths.'),members=[member])
+        report=self.render('inventory-output.php',dict(inventory_kind='php_files',minutes=30,totals={'requests':2},domains=1,
+            findings_total=1,paths_total=1,bytes_read=100,note='Observed',findings=[row],per_page='all'))
+        self.assertIn('Interpretation / evidence',report)
+        self.assertIn('Distinct clients: 1',report)
+        self.assertIn('Scanner &lt;script&gt;',report)
+        self.assertNotIn('<script>bad',report)
+        self.assertIn('data-hdn-inventory-value="/images/images/cache.php"',report)
+        self.assertIn('data-hdn-inventory-value="" disabled',report)
+        self.assertIn('value="all" selected',report)
+        self.assertIn('data-hdn-export-review',report)
+        for size in (20,50,100,500): self.assertIn('value="'+str(size)+'"',report)

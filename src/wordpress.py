@@ -220,10 +220,10 @@ def addresses(output):
     return sorted(result, key=lambda s: (':' in s, s))
 
 
-def snapshot(state, run, live=False, page=1):
+def snapshot(state, run, live=False, page=1, per_page=ban_history.PAGE_SIZE):
     ban_history.selection(page)
     result = {'settings': settings(state), 'managed': read_json(state, RECEIPT) is not None,
-              'loaded': live, 'ips': [], 'pagination': ban_history.pagination(0, page)}
+              'loaded': live, 'ips': [], 'pagination': ban_history.pagination(0, page, per_page=per_page)}
     if not live:
         return result
     try:
@@ -233,9 +233,9 @@ def snapshot(state, run, live=False, page=1):
         result['active'] = active
         if active:
             all_ips = addresses(run(CLIENT, 'get', JAIL, 'banip'))
-            meta = ban_history.pagination(len(all_ips), page)
-            offset = (meta['page'] - 1) * ban_history.PAGE_SIZE
-            result.update(ips=all_ips[offset:offset + ban_history.PAGE_SIZE], pagination=meta)
+            meta = ban_history.pagination(len(all_ips), page, per_page=per_page)
+            limit, offset = ban_history.listing.bounds(meta)
+            result.update(ips=all_ips[offset:] if limit == -1 else all_ips[offset:offset+limit], pagination=meta)
         result['available'] = True
     except FileNotFoundError:
         result.update(available=False, error='Fail2ban is not installed. Install it from the Fail2ban section first.')

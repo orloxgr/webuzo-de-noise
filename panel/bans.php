@@ -84,6 +84,7 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 </form>
 <?php if (!empty($banState['error'])): ?><div class="alert alert-danger u-mb20" role="alert"><pre style="white-space:pre-wrap;overflow-wrap:anywhere"><?= $escape($banState['error']) ?></pre></div><?php endif; ?>
 <p class="u-mb10">Active: <?= $escape($banState['active'] ?? 0) ?> · Pending: <?= $escape($banState['pending'] ?? 0) ?> · Last sync: <?= !empty($banState['last_sync']) ? $escape(gmdate('Y-m-d H:i:s', (int)$banState['last_sync']) . ' UTC') : 'Not synchronized yet' ?></p>
+<div data-hdn-remote-list="bans" data-hdn-view="<?= $escape($banState['pagination']['view'] ?? 'active') ?>">
 <?php $listState = $banState; $listPrefix = 'bans'; $listTab = 'bans'; require $install . '/panel/ban-pagination.php'; ?>
 <?php if (!$historyView): ?><form method="post"><?php $fields('unban'); ?>
 <div class="u-mb10"><button class="button button-secondary" type="submit">Unban selected</button>
@@ -100,3 +101,5 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 </tbody></table></div>
 <?php if (empty($banState['rows'])): ?><p><?= $historyView ? 'No completed ban history.' : 'No active or pending De-Noise bans.' ?></p><?php endif; ?>
 <?php if (!$historyView): ?></form><?php endif; ?>
+
+</div>

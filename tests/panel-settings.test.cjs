@@ -8,17 +8,19 @@ const source = fs.readFileSync(path.join(__dirname, '../panel/settings.js'), 'ut
 function fixture(replies, {action = null, remembered = null, activity = false, inventory = null} = {}) {
     if (!remembered) replies.unshift({ok:true,job:{id:null,state:'idle'}});
     const handlers = {}, requests = [], downloads = [];
+    let filterControls = [];
     const exportStatus = {}, exportButton = {disabled:false};
     let exportedBlob;
-    let updated = false, stored = remembered;
+    let updated = false, updates = 0, stored = remembered;
     const button = {textContent: 'Analyze logs', disabled: false};
     const progress = {textContent: ''};
     const cancel = {hidden: true, addEventListener: (_, fn) => {handlers.cancel = fn;}};
-    const output = {querySelector:()=>exportStatus, replaceChildren: (...nodes) => {updated = nodes[0] === 'report';}, addEventListener: (_, fn) => {handlers.page = fn;}};
+    const output = {querySelector:()=>exportStatus, querySelectorAll:selector=>selector === '[data-hdn-filter]' ? filterControls : [], replaceChildren: (...nodes) => {updated = nodes[0] === 'report'; updates++;}, addEventListener: (event, fn) => {handlers[event === 'click' ? 'page' : 'reviewSize'] = fn;}};
     const fields = {
         '[name="analysis_minutes"]': {value:'30'},
         '[name="analysis_target"]': {value:'all'},
-        '[name="analysis_verify_google"]': {checked:false}
+        '[name="analysis_verify_google"]': {checked:false},
+        '[name="activity_domain"]': {value:'all', addEventListener: (_, fn) => {handlers.domain = fn;}}
     };
     const form = {action: {toString: () => '[object HTMLInputElement]'},
         getAttribute: () => action,
@@ -56,7 +58,11 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
     });
     if (!remembered) requests.shift(); // Initial status lookup is not a new scan.
     return {handlers, requests, button, progress, fields, downloads, exportStatus, appendButtons, nodes,
-        exportCSV:()=>handlers.page({target:{closest:selector=>selector === '[data-hdn-export-agents]' ? exportButton : null}}), updated: () => updated,
+        setFilters:values=>{filterControls=Object.entries(values).map(([name,value])=>({dataset:{hdnFilter:name},value:String(value),type:typeof value==='boolean'?'checkbox':'text',checked:value}));},
+        applyFilters:()=>handlers.page({target:{closest:selector=>selector==='[data-hdn-apply-filters]'?{}:null}}),
+        resetFilters:()=>handlers.page({target:{closest:selector=>selector==='[data-hdn-reset-filters]'?{}:null}}),
+        exportReview:()=>handlers.page({target:{closest:selector=>selector === '[data-hdn-export-review]' ? exportButton : null}}),
+        exportCSV:()=>handlers.page({target:{closest:selector=>selector === '[data-hdn-export-agents]' ? exportButton : null}}), updated: () => updated, updates: () => updates,
         submit: () => handlers.submit({preventDefault() {}})};
 }
 const queued = {ok: true, job: {id: 'one', state: 'queued'}};
@@ -161,12 +167,12 @@ test('restored report and pagination never overwrite a newly edited review selec
     const f = fixture([value,value], {remembered:'one'});
     f.fields['[name="analysis_minutes"]'].value='1440'; f.handlers.input();
     await new Promise(resolve=>setImmediate(resolve));
-    await f.handlers.page({target:{closest:()=>({dataset:{hdnAnalysisPage:'2'}})}});
+    await f.handlers.page({target:{closest:selector=>selector === '[data-hdn-analysis-page]' ? {dataset:{hdnAnalysisPage:'2'}} : null}});
     assert.equal(f.fields['[name="analysis_minutes"]'].value,'1440');
     assert.equal(f.fields['[name="analysis_target"]'].value,'all');
 });
 test('pagination exposes remaining findings without policy changes', async () => {
-    const f = fixture([queued,done,done]); await f.submit(); await f.handlers.page({target:{closest:()=>({dataset:{hdnAnalysisPage:'2'}})}});
+    const f = fixture([queued,done,done]); await f.submit(); await f.handlers.page({target:{closest:selector=>selector === '[data-hdn-analysis-page]' ? {dataset:{hdnAnalysisPage:'2'}} : null}});
     assert.equal(f.requests[2].options.body.fields.get('analysis_page'),'2'); assert.equal(f.requests[2].options.body.fields.has('analysis_target'),false);
 });
 test('cancellation uses the authenticated job endpoint', async () => {
@@ -180,6 +186,7 @@ test('activity loads metadata without scanning and uses its own start/status end
     assert.equal(f.requests[1].options.body.fields.get('action'),'activity_status');
     assert.equal(f.requests[0].options.body.fields.get('tab'),'activity');
     assert.equal(f.updated(),true);
+    assert.equal(f.updates(),1);
 });
 
 test('tabs switch panels and keyboard focus without depending on the panel theme', () => {
@@ -303,4 +310,118 @@ test('an empty completed inventory exports the two-column header', async () => {
     await f.submit(); await f.exportCSV();
     assert.equal(await f.downloads[0].blob.text(),'agent,hits\r\n');
     assert.equal(f.exportStatus.textContent,'CSV downloaded: 0 agents.');
+});
+
+test('Activity filters the saved report without launching a new scan and ignores stale selections', async () => {
+    const f=fixture([queued,{...done,job:{...done.job,analysis:{selected_domain:'all'}}},
+        {...done,job:{...done.job,analysis:{selected_domain:'one.test'}}},
+        {...done,job:{...done.job,analysis:{selected_domain:'one.test'}}}],{activity:true});
+    await f.submit();
+    assert.match(f.progress.textContent,/saved Activity review/);
+    f.fields['[name="activity_domain"]'].value='one.test';
+    await f.handlers.domain();
+    assert.equal(f.updates(),2);
+    assert.equal(f.updated(),true);
+    assert.equal(f.requests.at(-1).options.body.fields.get('activity_domain'),'one.test');
+    f.fields['[name="activity_domain"]'].value='two.test';
+    await f.handlers.domain();
+    assert.equal(f.updates(),2);
+    assert.equal(f.requests.filter(r=>r.options.body.fields.get('action')==='activity_start').length,1);
+    assert.equal(f.requests.at(-1).options.body.fields.get('activity_domain'),'two.test');
+});
+
+test('Access method and inheritance controls enable only relevant required fields', () => {
+    const controls={disabled:true},basic={},captcha={},username={},seconds={};
+    const nodes={'hdn-agent-presets':{textContent:'{}'},'hdn-probe-presets':{textContent:'{}'}};
+    const form={querySelector:s=>({'[data-hdn-basic-controls]':basic,'[data-hdn-captcha-controls]':captcha,
+        '[name="access_username"]':username,'[name="captcha_seconds"]':seconds,'[data-hdn-access-controls]':controls})[s]};
+    const method={value:'off',closest:()=>form,addEventListener:(_,fn)=>{method.change=fn;}};
+    const inherit={value:'inherit',closest:()=>form,addEventListener:(_,fn)=>{inherit.change=fn;}};
+    vm.runInNewContext(source,{document:{getElementById:id=>nodes[id],querySelectorAll:s=>
+        s==='[data-hdn-access-method]'?[method]:s==='[data-hdn-access-source]'?[inherit]:[],addEventListener(){}}});
+    assert.equal(username.required,false);assert.equal(seconds.required,false);
+    method.value='captcha';method.change();
+    assert.equal(basic.hidden,true);assert.equal(captcha.hidden,false);assert.equal(seconds.required,true);
+    method.value='basic';method.change();
+    assert.equal(basic.hidden,false);assert.equal(captcha.hidden,true);assert.equal(username.required,true);
+    inherit.value='custom';inherit.change();assert.equal(controls.disabled,false);
+    inherit.value='inherit';inherit.change();assert.equal(controls.disabled,true);
+});
+
+
+test('review size changes only the saved report page, with all supported choices', async () => {
+    const f=fixture([queued,done,...Array.from({length:5},()=>done)]); await f.submit();
+    for (const size of ['20','50','100','500','all']) {
+        await f.handlers.reviewSize({target:{matches:selector=>selector==='[data-hdn-review-size]',value:size}});
+        const fields=f.requests.at(-1).options.body.fields;
+        assert.equal(fields.get('analysis_per_page'),size);
+        assert.equal(fields.get('analysis_page'),'1');
+        assert.equal(fields.get('action'),'log_scan_status');
+        assert.equal(fields.has('policy'),false);
+    }
+});
+
+test('PHP CSV expands grouped exact paths and waits for every chunk before downloading', async () => {
+    const f=fixture([queued,done,
+        {ok:true,export:{columns:['Path','Hits'],rows:[['/a.php',3],['/a/a.php',2]],scanned:500,total:501,next_offset:500}},
+        {ok:true,export:{columns:['Path','Hits'],rows:[['=bad',1]],scanned:1,total:501,next_offset:null}}
+    ],{inventory:'php_files'}); await f.submit(); await f.exportReview();
+    assert.equal(f.downloads.length,1);
+    const text=await f.downloads[0].blob.text();
+    assert.match(text,/"\/a\/a.php","2"/); assert.ok(text.includes('"\'=bad","1"'));
+    assert.deepEqual(f.requests.slice(2).map(r=>r.options.body.fields.get('export_offset')),['0','500']);
+    assert.ok(f.requests.slice(2).every(r=>r.options.body.fields.get('review_kind')==='php_files'));
+});
+
+test('review CSV refuses incomplete or failed transfers without a partial download', async () => {
+    for (const reply of [{http:503,error:'Read failed'}, {ok:true,export:{columns:['Path'],rows:[],scanned:0,total:1,next_offset:null}}]) {
+        const f=fixture([queued,done,reply],{inventory:'php_files'}); await f.submit(); await f.exportReview();
+        assert.equal(f.downloads.length,0);
+        assert.match(f.exportStatus.textContent,/Read failed|incomplete/);
+    }
+});
+
+
+test('finding filters apply to saved results, pagination and every CSV chunk without starting another scan', async () => {
+    const f=fixture([queued,done,done,done,{ok:true,export:{columns:['Path'],rows:[['/probe.php']],scanned:1,total:1,next_offset:null,view_revision:'stable'}}],{inventory:'php_files'});
+    await f.submit();
+    f.setFilters({domain:'one.test',priority:'high',query:'/probe',min_hits:2,min_domains:1,review:'all'});
+    await f.applyFilters();
+    await f.handlers.page({target:{closest:selector=>selector==='[data-hdn-analysis-page]'?{dataset:{hdnAnalysisPage:'2'}}:null}});
+    await f.exportReview();
+    for(const r of f.requests.slice(2)) {
+        const b=r.options.body.fields,filters=JSON.parse(b.get('review_filters'));
+        assert.equal(filters.domain,'one.test');assert.equal(filters.priority,'high');assert.equal(filters.min_hits,2);
+        assert.equal(filters.query,'/probe');assert.equal(b.get('token'),'csrf-token');assert.equal(b.has('policy'),false);
+    }
+    assert.equal(f.requests.filter(r=>r.options.body.fields.get('action')==='php_files_start').length,1);
+    assert.equal(f.downloads.length,1);
+});
+
+test('review notes post only the exact domain/path, then refresh the saved view', async () => {
+    const f=fixture([queued,done,{ok:true,mark:{state:'ignored'}},done],{inventory:'php_files'});
+    await f.submit();
+    const item={dataset:{hdnReviewItem:'/images/images/probe.php'},querySelector:()=>({value:'one.test'})};
+    const button={dataset:{hdnReviewMark:'ignored'},closest:()=>item,disabled:false};
+    await f.handlers.page({target:{closest:selector=>selector==='[data-hdn-review-mark]'?button:null}});
+    const body=f.requests[2].options.body.fields;
+    assert.equal(body.get('action'),'review_mark');assert.equal(body.get('review_domain'),'one.test');
+    assert.equal(body.get('review_item'),'/images/images/probe.php');assert.equal(body.get('review_kind'),'php_files');
+    assert.equal(body.get('review_mark'),'ignored');assert.equal(body.get('token'),'csrf-token');assert.equal(body.has('policy'),false);
+    assert.equal(f.requests[3].options.body.fields.get('action'),'php_files_status');
+    assert.match(f.exportStatus.textContent,/Protection settings are unchanged/);
+});
+
+test('CSV refuses changing review revisions instead of downloading mixed results', async () => {
+    const f=fixture([queued,done,
+      {ok:true,export:{columns:['Path'],rows:[['/one.php']],scanned:1,total:2,next_offset:1,view_revision:'before'}},
+      {ok:true,export:{columns:['Path'],rows:[['/two.php']],scanned:1,total:2,next_offset:null,view_revision:'after'}}],{inventory:'php_files'});
+    await f.submit();await f.exportReview();
+    assert.equal(f.downloads.length,0);assert.match(f.exportStatus.textContent,/notes changed/);
+});
+
+test('invalid numeric filters never submit partial settings or launch work', async () => {
+    const f=fixture([queued,done],{inventory:'php_files'});await f.submit();
+    f.setFilters({min_hits:'-1'});await f.applyFilters();
+    assert.equal(f.requests.length,2);assert.match(f.progress.textContent,/nonnegative/);
 });

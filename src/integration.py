@@ -32,10 +32,10 @@ def block(name, target=None):
     return BEGIN + 'include ' + str(webuzo.SNIPPETS / (domain(target or name) + '.conf')) + ';\n' + END
 
 
-def independent_limits(text, ancestors=frozenset()):
+def independent_limits(text, ancestors=frozenset(), authentication=False):
     """Inspect administrator includes as data, with the same no-link ownership checks."""
     nodes = webuzo.directives(text)
-    if webuzo.has_limits(nodes):
+    if (webuzo.has_authentication(nodes) if authentication else webuzo.has_limits(nodes)):
         return True
     def includes(items):
         for key, args, children in items:
@@ -54,7 +54,7 @@ def independent_limits(text, ancestors=frozenset()):
                     raw = storage.read(path)
                     if raw is None:
                         raise ValueError('Independent Nginx include is missing: ' + str(path))
-                    if independent_limits(raw.decode('utf-8'), ancestors | {path}):
+                    if independent_limits(raw.decode('utf-8'), ancestors | {path}, authentication):
                         return True
             if children is not None and includes(children):
                 return True
@@ -62,7 +62,7 @@ def independent_limits(text, ancestors=frozenset()):
     return includes(nodes)
 
 
-def prepare(sites, manifest, remove=False, mail=False):
+def prepare(sites, manifest, remove=False, mail=False, access=None, site_mode=None):
     desired = {name: site for site in sites if site['supported'] and not site.get('shared_webmail')
                for name in site.get('custom_domains', [site['domain']])} if not remove else {}
     if not remove:
@@ -95,6 +95,12 @@ def prepare(sites, manifest, remove=False, mail=False):
             # Nginx. Never silently override an independent rate-limit policy.
             if name not in (HTTP, MAIL) and independent_limits(clean, frozenset({path})):
                 raise ValueError('Custom domain configuration already defines request limits: ' + name)
+            if name not in (HTTP, MAIL) and access is not None:
+                import access_protection
+                profile = access_protection.effective(access, desired[name]['key'])
+                if profile['enabled'] and (site_mode is None or site_mode(desired[name]) != 'off'):
+                    if desired[name].get('native_authentication') or independent_limits(clean, frozenset({path}), authentication=True):
+                        raise ValueError('Existing HTTP authentication must be reconciled before enabling De-Noise access protection: ' + name)
             if name in manifest:
                 after = text.replace(owned, next_block)
                 entry = {**manifest[name], 'site': target}

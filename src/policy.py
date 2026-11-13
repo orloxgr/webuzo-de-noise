@@ -7,9 +7,10 @@ from urllib.parse import quote, unquote
 import probe_rules
 import enumeration
 import agent_catalog
+import access_protection
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.3.0'
+VERSION = '0.4.3'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
@@ -339,11 +340,13 @@ def site_mode(policy, site):
     return policy['overrides'].get(site['key'], policy['mode']) if not site.get('suspended') else 'off'
 
 
-def global_config(policy, sites, global_blocks=None):
+def global_config(policy, sites, global_blocks=None, access_settings=None, geo_path=None):
     policy = validate(policy)
     # Declare a safe mode even on a new server with no domains yet. Supported
     # virtual hosts set this changeable variable during their rewrite phase.
     lines = [MARKER, 'map $server_name $hdn_site { default $server_name; }']
+    lines += access_protection.compile_maps(access_settings or access_protection.defaults(),
+        [s for s in sites if site_mode(policy, s) != 'off'], pattern, geo_path)
     lines += ['geo $remote_addr $hdn_global_blocked {', '    default 0;']
     for value in sorted(global_blocks or []):
         address = ipaddress.ip_address(value)
@@ -445,9 +448,10 @@ def global_config(policy, sites, global_blocks=None):
     return '\n'.join(lines) + '\n'
 
 
-def site_config(policy, site, document_root=None):
+def site_config(policy, site, document_root=None, access_settings=None):
     mode = site_mode(policy, site)
     lines = [MARKER, 'set $hdn_site ' + domain(site.get('domain', site['key'].split('/', 1)[1])) + ';', 'set $hdn_mode ' + mode + ';']
+    lines += access_protection.site_lines(access_settings or access_protection.defaults(), site, mode)
     if policy['bans']['enabled'] or site.get('global_bans'):
         lines += ['if ($hdn_global_blocked) { return 403; }']
     if site.get('kind') == 'mail':
@@ -475,6 +479,7 @@ def site_config(policy, site, document_root=None):
                   'if ($hdn_static_reject) { return 404; }']
         if policy['enumeration']['enabled'] and site.get('enumeration_ready'):
             lines.append('if ($hdn_enum_reject) { return 403; }')
+    lines += access_protection.challenge_line(access_settings or access_protection.defaults(), site, mode)
     for key in ('login', 'xmlrpc'):
         if policy[key]['enabled']:
             burst = policy[key]['burst']

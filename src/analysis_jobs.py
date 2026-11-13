@@ -17,6 +17,8 @@ sys.pycache_prefix = str(Path(__file__).resolve().parent / '.bytecode')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import log_analysis
 import storage
+import listing
+import review_findings
 
 
 def directory(state, job):
@@ -171,9 +173,87 @@ def agent_candidates(state, job, actor, category, offset=0):
                 scanned=len(chunk['rows']), total=chunk['total'], next_offset=chunk['next_offset'])
 
 
-def status(state, job, actor, page=1, kind="scan", owner=None):
+def finding_rows(path, analysis):
+    if analysis.get('findings_database'):
+        with report_database(path) as connection:
+            for (raw,) in connection.execute('SELECT payload FROM findings ORDER BY rank,count DESC,site,path'):
+                yield json.loads(raw)
+    else:
+        yield from analysis.get('findings', [])
+
+
+def php_features(kind):
+    return review_findings.php_findings.TAGS if kind == 'php_files' else {
+        k:v for k,v in review_findings.FEATURES.items() if k not in review_findings.php_findings.TAGS}
+
+
+def finding_view(state, path, analysis, kind, chosen):
+    values, available = [], set()
+    saved = review_findings.notes(state)
+    ignored = 0
+    for row in finding_rows(path, analysis):
+        for member in row.get('members') or [row]:
+            item = member['value'] if kind == 'php_files' else member['path']
+            for d in review_findings.domains(member, kind):
+                available.add(d['domain'])
+                if saved.get(review_findings.identity(kind, d['domain'], item), {}).get('state') == 'ignored': ignored += 1
+        value = review_findings.view(row, kind, chosen, saved)
+        if value is not None:
+            if kind == 'scan' and not value.get('endpoint_work'):
+                work = log_analysis.endpoint(value['path'])
+                value['endpoint_work'] = [work] if work else []
+            values.append(value)
+    if kind == 'scan' and chosen['group_rejected']:
+        from collections import Counter
+        buckets, other = {}, []
+        for row in values:
+            rejected = sum(row.get('statuses', {}).get(code,0) for code in ('401','403','429'))
+            if row.get('kind') == 'security' and rejected == row['count']:
+                buckets.setdefault(row['domain'], []).append(row)
+            else:
+                other.append(row)
+        for domain, members in buckets.items():
+            if len(members) == 1:
+                other.extend(members); continue
+            statuses = Counter()
+            for row in members: statuses.update(row['statuses'])
+            group = dict(domain=domain, path='Rejected secret-file probes', kind='security', title='Rejected secret-file probes',
+                         count=sum(r['count'] for r in members), statuses=dict(statuses), grouped_probes=members)
+            group['review_info'] = review_findings.scan_info(group)
+            other.append(group)
+        values = other
+    # Stable, explicit review priority first; frequency breaks ties.
+    values.sort(key=lambda r: (('high','normal','low').index(r['review_info']['priority']), -r['count'], r.get('path',r.get('value',''))))
+    revision = hashlib.sha256(storage.json_bytes([chosen, saved])).hexdigest()
+    return values, dict(filter_domains=sorted(available), filters=chosen, filter_features=php_features(kind),
+                        ignored_contributions=ignored, view_revision=revision)
+
+
+def mark_review(state, job, actor, kind, domain, item, value):
+    if kind not in ('scan', 'php_files') or not all(isinstance(x, str) for x in (domain,item,value)):
+        raise ValueError('Invalid review note selection')
+    path = owned(state, job, actor, kind=kind)
+    if read(path, 'status.json')['state'] != 'complete':
+        raise ValueError('Complete the review first')
+    analysis = read(path, 'result.json')
+    for row in finding_rows(path, analysis):
+        for member in row.get('members') or [row]:
+            target = member['value'] if kind == 'php_files' else member['path']
+            if target == item and any(d['domain']==domain for d in review_findings.domains(member, kind)):
+                review_findings.mark(state, actor, kind, domain, item, value)
+                return dict(domain=domain, item=item, state=value)
+    raise ValueError('Select an exact path and domain from this report')
+
+
+def status(state, job, actor, page=1, kind="scan", owner=None, domain='all', per_page=20, filters=None):
+    listing.size(per_page)
+    chosen = review_findings.filters(filters)
+    if filters is not None and kind not in ('scan', 'php_files'):
+        raise ValueError('Finding filters apply only to log and PHP reviews')
     if type(page) is not int or page < 1:
         raise ValueError('Invalid report page')
+    if kind == 'activity' and (not isinstance(domain, str) or not domain):
+        raise ValueError('Select a site or all sites for Activity')
     if not job:
         if not isinstance(actor, str) or not re.fullmatch('[A-Za-z0-9][A-Za-z0-9_-]*', actor):
             raise PermissionError('Invalid administrator identity')
@@ -201,25 +281,121 @@ def status(state, job, actor, page=1, kind="scan", owner=None):
     result = {'id': job, **value, 'selection': {key: request[key] for key in ('target', 'minutes', 'verify_google')}}
     if value['state'] == 'complete':
         analysis = read(path, 'result.json')
+        if kind in ('scan', 'php_files'):
+            values, view = finding_view(state, path, analysis, kind, chosen)
+            meta = listing.pagination(len(values), page, per_page)
+            limit, offset = listing.bounds(meta)
+            analysis.update(view, review_total=analysis['findings_total'], findings_total=len(values),
+                findings=values[offset:] if limit == -1 else values[offset:offset+limit],
+                page=meta['page'], pages=meta['pages'], per_page=per_page)
+            result['analysis'] = analysis
+            return result
+        if kind == 'activity':
+            from datetime import datetime
+            # This is a saved snapshot, not a new rolling "last N minutes" read.
+            end = request['requested_at']
+            analysis.setdefault('window_start', datetime.fromtimestamp(end - request['minutes'] * 60).astimezone().isoformat(timespec='seconds'))
+            analysis.setdefault('window_end', datetime.fromtimestamp(end).astimezone().isoformat(timespec='seconds'))
+            analysis['selected_domain'] = domain
+            analysis['review_total'] = analysis['total']
+            if domain != 'all':
+                analysis['rows'] = [row for row in analysis['rows'] if row['domain'] == domain]
+                analysis['total'] = sum(row['count'] for row in analysis['rows'])
+                analysis['findings_total'] = analysis['total']
         # Display pages only; the complete report remains available on disk.
         total = analysis['findings_total']
-        pages = max(1, (total + 19) // 20)
-        page = min(page, pages)
+        meta = listing.pagination(total, page, per_page)
+        limit, offset = listing.bounds(meta)
         if analysis.get('findings_database'):
             with report_database(path) as connection:
-                query = ('SELECT payload FROM events ORDER BY stamp DESC LIMIT ? OFFSET ?' if kind == 'activity' else
-                         'SELECT payload FROM findings ORDER BY rank,count DESC,site,path LIMIT ? OFFSET ?')
-                analysis['findings'] = [json.loads(row[0]) for row in connection.execute(query, (20, (page - 1) * 20))]
+                if kind == 'activity':
+                    query = 'SELECT payload FROM events' + (' WHERE domain = ?' if domain != 'all' else '') + ' ORDER BY stamp DESC LIMIT ? OFFSET ?'
+                    arguments = ((domain,) if domain != 'all' else ()) + (limit, offset)
+                else:
+                    query = 'SELECT payload FROM findings ORDER BY rank,count DESC,site,path LIMIT ? OFFSET ?'
+                    arguments = (limit, offset)
+                analysis['findings'] = [json.loads(row[0]) for row in connection.execute(query, arguments)]
         else:
-            analysis['findings'] = analysis['findings'][(page - 1) * 20:page * 20]
-        analysis['page'] = page
-        analysis['pages'] = pages
+            findings = analysis.get('findings', analysis.get('recent', []))
+            if kind == 'activity' and domain != 'all':
+                findings = [row for row in findings if row['domain'] == domain]
+            analysis['findings'] = findings[offset:] if limit == -1 else findings[offset:offset + limit]
+        analysis.update(page=meta['page'], pages=meta['pages'], per_page=per_page)
         if kind == 'agents':
             import agent_catalog
             for row in analysis['findings']:
                 row['bot_info'] = agent_catalog.describe(row['value'])
+        elif kind == 'php_files':
+            import php_findings
+            for row in analysis['findings']:
+                row.setdefault('php_info', php_findings.describe(row['value'], row.get('candidate')))
         result['analysis'] = analysis
     return result
+
+
+def export_review(state, job, actor, kind='scan', owner=None, domain='all', offset=0, filters=None):
+    """Export complete saved results in transfer chunks, retaining ownership scope."""
+    if kind not in ('scan', 'activity', 'php_files') or type(offset) is not int or offset < 0:
+        raise ValueError('Invalid review export selection')
+    # status validates job ownership, kind and current account scope before reads.
+    report = status(state, job, actor, kind=kind, owner=owner, domain=domain,
+                    per_page='all' if kind in ('scan','php_files') else 500, filters=filters)
+    if report['state'] != 'complete':
+        raise ValueError('Complete the review before exporting')
+    analysis = report['analysis']; total = analysis['findings_total']
+    if offset > total:
+        raise ValueError('Invalid export offset')
+    path = owned(state, job, actor, kind, owner)
+    if kind in ('scan', 'php_files'):
+        values = analysis['findings'][offset:offset+500]
+    elif analysis.get('findings_database'):
+        with report_database(path) as connection:
+            if kind == 'activity':
+                sql = 'SELECT payload FROM events' + (' WHERE domain=?' if domain != 'all' else '') + ' ORDER BY stamp DESC LIMIT 500 OFFSET ?'
+                args = ((domain,) if domain != 'all' else ()) + (offset,)
+            else:
+                sql = 'SELECT payload FROM findings ORDER BY rank,count DESC,site,path LIMIT 500 OFFSET ?'
+                args = (offset,)
+            values = [json.loads(row[0]) for row in connection.execute(sql, args)]
+    else:
+        saved = read(path, 'result.json')
+        values = saved.get('findings', saved.get('recent', []))
+        if kind == 'activity' and domain != 'all':
+            values = [row for row in values if row['domain']==domain]
+        values = values[offset:offset+500]
+    if not values and offset < total:
+        raise ValueError('The saved report is incomplete')
+    if kind == 'activity':
+        columns = ['Time','Site','Rule','Declared agent','Result','HTTP status']
+        rows = [[r.get(k,'') for k in ('time','domain','rule','agent','outcome','status')] for r in values]
+    elif kind == 'php_files':
+        import php_findings
+        columns = ['PHP path','Hits','Source domains / hits','Classification','Explanation','First seen UTC','Last seen UTC',
+                   'Review priority','Characteristics','Declared agents / hits','Distinct clients','Cross-domain clients','Multi-path clients','Review state / domain','Evidence scope','Busiest matching client']
+        from datetime import datetime, timezone
+        rows = []
+        for group in values:
+            for r in group.get('members') or [group]:
+                info = r['php_info']
+                rows.append([r['value'],r['count'],'; '.join(d['domain']+': '+str(d['count']) for d in r['domains']),
+                    info['label'],info['reason'],*(datetime.fromtimestamp(r[k],timezone.utc).isoformat() if r.get(k) is not None else '' for k in ('first','last')),
+                    info['priority_label'], '; '.join(php_findings.TAGS[t] for t in info['tags']),
+                    '; '.join(a['agent']+': '+str(a['count']) for a in r.get('agents',[])),r.get('clients',''),r.get('cross_domain_clients',''),r.get('multi_path_clients',''),
+                    '; '.join(m['domain']+': '+m['state'] for m in r.get('review_marks',[])), r.get('evidence_scope',''),json.dumps(r.get('busiest_client',{}))])
+    else:
+        columns = ['Site','Path','Finding','Hits','Distinct clients','Peak per minute','HTTP statuses','Advice',
+                   'Parameter names','Methods','Declared agents','First seen UTC','Last seen UTC','Endpoint work','Review priority','Explanation','Review state','Native log files']
+        from datetime import datetime, timezone
+        exact_values = [r for group in values for r in group.get('grouped_probes', [group])]
+        rows = [[r.get('domain',''),r.get('path',''),r.get('title',''),r.get('count',0),r.get('clients',0),
+                 r.get('peak_per_minute',0),json.dumps(r.get('statuses',{})),r.get('advice',''),
+                 '; '.join(r.get('parameters',[])),json.dumps(r.get('methods',{})),json.dumps(r.get('agents',{})),
+                 *(datetime.fromtimestamp(r[k],timezone.utc).isoformat() if r.get(k) is not None else '' for k in ('first','last')),
+                 '; '.join(r.get('endpoint_work',[])),r['review_info']['priority_label'],r['review_info']['reason'],
+                 '; '.join(m['state'] for m in r.get('review_marks',[])), '; '.join(r.get('log_sources',[]))] for r in exact_values]
+    end = offset+len(values)
+    return dict(columns=columns, rows=rows, scanned=len(values), total=total, next_offset=end if end < total else None,
+                view_revision=analysis.get('view_revision'))
 
 
 def cancel(state, job, actor, kind="scan", owner=None):

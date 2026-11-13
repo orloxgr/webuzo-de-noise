@@ -7,7 +7,7 @@ $renderRule = static function (string $module, $index, array $rule) use ($escape
     $filter = $module === 'filters';
     $targets = $rule['targets'] ?? [];
     ?>
-    <div class="hdn-rule u-mb20" data-module="<?= $module ?>">
+    <div class="hdn-rule u-mb20" data-hdn-list-row data-module="<?= $module ?>">
         <label class="form-label u-block">Name <input form="hdn-settings" class="form-control" name="<?= $field('id') ?>" value="<?= $escape($rule['id']) ?>" pattern="[a-z][a-z0-9_]{0,31}" required></label>
         <label class="form-label u-block u-mt10"><input form="hdn-settings" type="checkbox" name="<?= $field('enabled') ?>" <?= !empty($rule['enabled']) ? 'checked' : '' ?>> Enabled</label>
         <label class="form-label u-block">URL <?= $filter ? 'path prefix' : 'directory' ?>
@@ -59,7 +59,7 @@ foreach (isset($ruleModule) ? [$ruleModule => $ruleModule === 'filters' ? 'Filte
         </div>
         <?php endforeach; ?>
         <p class="u-mb10" role="status" id="hdn-<?= $module ?>-message"></p>
-        <div id="hdn-<?= $module ?>-rows">
+        <div id="hdn-<?= $module ?>-rows" data-hdn-list="<?= $escape($title) ?> rules" data-hdn-columns='["Name","Path","Settings"]' data-hdn-rule-list>
         <?php foreach (is_array($policy[$module] ?? null) ? $policy[$module] : [] as $index => $rule) { $renderRule($module, $index, $rule); } ?>
         </div>
         <button type="button" class="button button-secondary" data-hdn-add="<?= $module ?>">Add rule</button>

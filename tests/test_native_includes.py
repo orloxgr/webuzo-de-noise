@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src'))
 import integration
 import storage
 import webuzo
+import access_protection as access
 
 
 @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Linux root-owned configuration fixtures')
@@ -100,6 +101,23 @@ class NativeIncludeTests(unittest.TestCase):
             with self.subTest(directive=directive), self.assertRaisesRegex(ValueError, 'request limits'):
                 integration.prepare([self.site], {})
             self.assertEqual(self.path.read_text(), directive)
+
+    def test_access_gate_rejects_existing_native_or_nested_http_authentication(self):
+        site = {**self.site, 'key': 'alice/example.test'}
+        settings = access.defaults()
+        settings['defaults'].update(enabled=True, method='captcha')
+        included = self.root / 'administrator.conf'
+        included.write_text('location /private { auth_basic "Private"; }\n')
+        self.path.write_text('include ' + str(included) + ';\n')
+        with self.assertRaisesRegex(ValueError, 'Existing HTTP authentication'):
+            integration.prepare([site], {}, access=settings)
+        self.assertNotIn(integration.BEGIN, self.path.read_text())
+        self.path.write_text('# No custom authentication\n')
+        with self.assertRaisesRegex(ValueError, 'Existing HTTP authentication'):
+            integration.prepare([{**site, 'native_authentication': True}], {}, access=settings)
+        # Off does not interfere with an administrator's authentication.
+        self.assertTrue(integration.prepare([{**site, 'native_authentication': True}], {},
+                                           access=settings, site_mode=lambda _: 'off')[1])
 
     def test_nested_limits_quoted_directives_and_include_cycles(self):
         included = self.root / 'administrator.conf'

@@ -41,14 +41,12 @@ SECRET_PATH = re.compile(r'(?:^|/)\.(?:env(?:[./]|$)|git(?:/|$)|svn(?:/|$)|hg(?:
 # These exact cache transport names are not content-filter dimensions. Their
 # presence does not authenticate the caller or exempt a request from analysis.
 TECHNICAL = {'ver', 'v', 'fbclid', 'gclid', 'msclkid', '_', 'cachebuster', 'rest_route', 'format',
-             'ultracache_revalidate', 'ultracache_rt', 'ultracache_rv', 'ultracache_bucket'}
+             'ultracache_revalidate', 'ultracache_rt', 'ultracache_rv', 'ultracache_bucket', 'doing_wp_cron', 'no-cache'}
 SENSITIVE = {'key', 'token', 'nonce', '_wpnonce', 'password', 'pass', 'email', 'login', 'auth', 'signature',
              'session', 'sessionid', 'sid', 'code', 'state', 'csrf', 'csrf_token', 'access_token',
              'refresh_token', 'api_key', 'api_token', 'action'}
-CLAIMS = ('Googlebot', 'bingbot', 'Applebot', 'Baiduspider', 'PetalBot', 'ibou-search',
-          'meta-externalagent', 'meta-webindexer', 'facebookexternalhit', 'Twitterbot', 'Slackbot', 'Discordbot',
-          'WhatsApp', 'TelegramBot', 'GPTBot', 'ClaudeBot', 'CCBot', 'Amazonbot',
-          'Reflectionbot', 'LinkupBot', 'AhrefsBot', 'SemrushBot', 'SERankingBacklinksBot', 'sqlmap', 'Nikto', 'Nuclei')
+KNOWN_CLAIMS = frozenset(name for field, category in agent_catalog.CATEGORIES.items()
+                         for name in category['entries'] + agent_catalog.EXTRA.get(field, []))
 
 
 def selection(sites, target, minutes):
@@ -148,8 +146,27 @@ def params(target):
 
 
 def claim(agent):
-    low = agent.lower()
-    return next((value for value in CLAIMS if value.lower() in low), 'Other / browser-like (unverified)')
+    name, _ = agent_catalog.observed(agent)
+    return name if name != agent or name in KNOWN_CLAIMS else 'Other / browser-like (unverified)'
+
+
+def endpoint(path, target=''):
+    """Describe known work; never retain arbitrary query values or actions."""
+    routes = {'/wp-json/complianz/v1/banner': 'Complianz consent banner',
+              '/wp-json/complianz/v1/track': 'Complianz consent event',
+              '/wp-json/ultracache/v1/errors/frontend': 'UltraCache browser error report',
+              '/wp-json/ultracache/v1/media/background-worker': 'UltraCache media background worker',
+              '/wp-json/oembed/1.0/embed': 'WordPress oEmbed lookup'}
+    for route, label in routes.items():
+        if path.rstrip('/').endswith(route): return label
+    if path.endswith('/wp-cron.php'): return 'WordPress scheduled tasks'
+    try:
+        pairs = dict(parse_qsl(target.partition('?')[2], keep_blank_values=True))
+    except ValueError:
+        pairs = {}
+    actions = {'get_refreshed_fragments': 'WooCommerce cart fragments', 'add_to_cart': 'WooCommerce add to cart',
+               'remove_from_cart': 'WooCommerce remove from cart', 'checkout': 'WooCommerce checkout'}
+    return actions.get(pairs.get('wc-ajax'), 'WooCommerce AJAX' if 'wc-ajax' in pairs else '')
 
 
 
@@ -218,6 +235,9 @@ def findings(groups, persist=False):
         elif count >= 100 and max(group['minutes'].values(), default=0) >= 40:
             kind, title = 'investigate', 'High activity on one route'
             advice = 'Check normal visitors, integrations and crawl activity before choosing any limit. Volume, browser-like names and HTTP 200 do not establish legitimacy or abuse.'
+        elif path.endswith('/wp-cron.php') and count >= 100:
+            kind, title = 'investigate', 'WordPress scheduled-task activity'
+            advice = 'These requests run WordPress scheduled tasks. doing_wp_cron is a technical token, not a content filter. Check the saved interval against the current native cron setup before diagnosing duplicate schedules.'
         if not kind:
             continue
         suggestion = ({key: group[key] for key in ('site', 'domain', 'path', 'parameters', 'count', 'first', 'last', 'verified_google', 'unconfirmed_google')} |
@@ -227,6 +247,8 @@ def findings(groups, persist=False):
                            request_time_samples=group['timing_count'],
                            mean_request_ms=round(group['request_seconds'] / group['timing_count'] * 1000, 2) if group['timing_count'] else None,
                            upstream_time_samples=group['upstream_count'],
+                           endpoint_work=sorted(group.get('endpoint_work', [])),
+                           log_sources=sorted(group.get('log_sources', [])),
                            mean_upstream_ms=round(group['upstream_seconds'] / group['upstream_count'] * 1000, 2) if group['upstream_count'] else None,
                            cache=dict(group['cache']), recommendations=recommendations(group, title)))
         if title == 'Many combinations of URL parameters':
@@ -343,7 +365,7 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
                     records += 1; totals['requests'] += 1; totals['status_' + status] += 1
                     if progress: progress(dict(records=totals['requests'], bytes=bytes_read, files_done=index, files_total=len(files), domain=site['domain']))
                     if inventory_kind:
-                        groups.observe(site, path_only, status, agent, at)
+                        groups.observe(site, path_only, status, agent, at, address=address)
                         continue
                     decoded_path = unquote(unquote(path_only))
                     if IMAGE.search(decoded_path):
@@ -360,6 +382,12 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
                     if key not in groups:
                         groups[key] = new_group(site, path_only, names)
                     group = groups[key]
+                    group.setdefault('log_sources', [])
+                    if path.name not in group['log_sources']: group['log_sources'].append(path.name)
+                    work = endpoint(path_only, target_url)
+                    if work:
+                        group.setdefault('endpoint_work', [])
+                        if work not in group['endpoint_work']: group['endpoint_work'].append(work)
                     group['count'] += 1; group['statuses'][status] += 1; group['methods'][method] += 1
                     group['minutes'][int(at // 60)] += 1
                     group['first'] = at if group['first'] is None else min(group['first'], at)
@@ -408,7 +436,7 @@ def scan(sites, target, minutes, state=None, verify_google=False, now=None, prog
                     elapsed_seconds=round(time.monotonic() - started, 3), partial=partial, limits={},
                     totals=dict(totals), findings=suggestions,
                     findings_total=inventory_total if inventory_kind else (groups.suggestion_count() if report_path is not None else len(suggestions)),
-                    inventory_kind=inventory_kind,
+                    inventory_kind=inventory_kind, paths_total=groups.paths_total if inventory_kind else None,
                     categories={key: value['title'] for key, value in agent_catalog.CATEGORIES.items()} if inventory_kind else {},
                     findings_database=report_path is not None, coverage=coverage, errors=errors,
                     unavailable_domains=sorted(selected_domains - seen_domains), group_limit_reached=group_dropped,

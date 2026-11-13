@@ -69,6 +69,19 @@ class BanHistoryTests(unittest.TestCase):
 
 
 
+    def test_active_and_history_all_read_more_than_five_hundred_records(self):
+        with auto_bans.database(self.state) as db:
+            for n in range(607):
+                ip='198.18.'+str(n//256)+'.'+str(n%256)
+                db.execute("INSERT INTO bans VALUES (?, 'alice.test','private-file',1000,0,'active','')",(ip,))
+                db.execute("INSERT INTO ban_history (scope,scope_key,ip,domain,reason,created,expires,ended) VALUES ('global','',?,'alice.test','private-file',1000,0,1001)",(ip,))
+        for view in ('active','history'):
+            result=auto_bans.report(self.state,view=view,per_page='all')
+            self.assertEqual(len(result['rows']),607)
+            self.assertEqual(result['pagination']['pages'],1)
+            for size in (20,50,100,500):
+                self.assertEqual(len(auto_bans.report(self.state,view=view,per_page=size)['rows']),size)
+
     def test_retention_and_clear_preserve_live_bans_counters_cursors_and_other_owners(self):
         now=4000000
         with auto_bans.database(self.state) as db:

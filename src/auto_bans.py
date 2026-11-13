@@ -129,20 +129,20 @@ def events(db, cursor_table='cursors'):
             context.__exit__(None, None, None)
 
 
-def report(state, enabled=False, page=1, view='active'):
+def report(state, enabled=False, page=1, view='active', per_page=ban_history.PAGE_SIZE):
     ban_history.selection(page, view)
     with database(state, create=False) as db:
         if db is None:
             return {'enabled': enabled, 'active': 0, 'pending': 0, 'rows': [], 'error': '', 'last_sync': '', 'unsupported_ipv6': 0,
-                    'pagination': ban_history.pagination(0, page, view)}
+                    'pagination': ban_history.pagination(0, page, view, per_page)}
         counts = dict(db.execute('SELECT status, COUNT(*) FROM bans GROUP BY status').fetchall())
         if view == 'history':
-            rows, meta = ban_history.page(db, 'global', number=page)
+            rows, meta = ban_history.page(db, 'global', number=page, per_page=per_page)
         else:
             total = sum(counts.get(key, 0) for key in ('active', 'pending', 'removing'))
-            meta = ban_history.pagination(total, page)
+            meta = ban_history.pagination(total, page, per_page=per_page)
             rows = [dict(row) for row in db.execute("SELECT * FROM bans WHERE status IN ('active','pending','removing') ORDER BY created DESC,ip LIMIT ? OFFSET ?",
-                    (ban_history.PAGE_SIZE, (meta['page'] - 1) * ban_history.PAGE_SIZE))]
+                    ban_history.listing.bounds(meta))]
             for row in rows:
                 row['diagnostics'] = ban_evidence.lookup(db, row['ip'], row['created'])
                 if row['diagnostics'] is None and row['status'] == 'removing':

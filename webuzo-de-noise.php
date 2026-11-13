@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Webuzo De-Noise
-Version: 0.3.7
+Version: 0.4.3
 Description: Filter unwanted web requests and manage domain protection.
 Author: Byron Iniotakis
 Author URI: https://www.iniotakis.com
@@ -47,7 +47,8 @@ admin_act('webuzo-de-noise', 'wdn_page');
 enduser_act('webuzo-de-noise', 'wdn_page');
 function wdn_page() {
     // Native action callbacks run before the panel emits its HTML header.
-    if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ?? '') === '1') {
+    if ((($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ?? '') === '1') ||
+        (($_SERVER['REQUEST_METHOD'] ?? '') === 'GET' && isset($_GET['download_list']))) {
         wdn_theme(); exit;
     }
     theme_for_act('wdn_theme', 'webuzo-de-noise');
