@@ -14,6 +14,8 @@ import ban_evidence
 import ban_history
 import storage
 import log_files
+import endpoints
+import endpoint_404
 
 from policy import site_mode
 from probe_rules import reason_settings, token
@@ -159,9 +161,25 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
     settings = policy['bans']
     eligible = {site['domain'] for site in sites if not site.get('shared_webmail') and site.get('supported') and not site.get('suspended') and
                 site_mode(policy, site) == 'enforce' and (not settings['targets'] or site['key'] in settings['targets'])}
-    enabled = settings['enabled'] and bool(eligible) and not remove
+    rules = reason_settings(settings) if settings['enabled'] else {}
+    scopes = {reason: set(eligible) for reason in rules}
+    custom_rules, custom_scopes, custom_tokens = endpoints.ban_rules(policy, [s for s in sites if not s.get('shared_webmail')], site_mode)
+    rules.update(custom_rules); scopes.update(custom_scopes)
+    eligible = set().union(*scopes.values()) if scopes else set()
+    enabled = bool(eligible) and not remove
     if not enabled and not (Path(state) / 'bans.sqlite').exists():
         return report(state)
+    selected404 = policy.get('endpoint_404', endpoint_404.DEFAULT)
+    domains404 = scopes.get(endpoint_404.REASON, set()) if not remove else set()
+    with database(state) as activation:
+        signature = endpoint_404.fingerprint(selected404, domains404)
+        changed404 = get(activation, 'selected404-signature') != signature
+        endpoint_404.prepare_counts(activation, now, selected404.get('findtime',300), reset=changed404)
+        if changed404:
+            put(activation, 'selected404-signature', signature)
+            put(activation, 'selected404-start', now)
+        start404 = float(get(activation, 'selected404-start', str(now)))
+        activation.commit()
     if not enabled:
         skip_native = False
         with database(state, create=False) as db:
@@ -198,14 +216,13 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                         db.execute("UPDATE bans SET status='pending',error='' WHERE ip=?", (row['ip'],))
                     elif row['ip'] not in records or row['ip'] not in active:
                         raise ValueError('Web-ban record and installed Nginx rules disagree for ' + row['ip'])
-                rules = reason_settings(settings)
                 for reason, rule in rules.items():
-                    duration = rule['duration_days']
-                    if get(db, 'duration:' + reason) != str(duration):
-                        db.execute("UPDATE bans SET expires=CASE WHEN ?=0 THEN 0 ELSE created+? END WHERE reason=? AND status IN ('active','pending')", (duration, duration * 86400, reason))
-                        put(db, 'duration:' + reason, duration)
+                    duration = rule.get('duration_seconds', rule['duration_days'] * 86400)
+                    if get(db, 'duration-seconds:' + reason) != str(duration):
+                        db.execute("UPDATE bans SET expires=CASE WHEN ?=0 THEN 0 ELSE created+? END WHERE reason=? AND status IN ('active','pending')", (duration, duration, reason))
+                        put(db, 'duration-seconds:' + reason, duration)
                 # Do not let stale strikes from a removed rule/scope create a ban.
-                fingerprint = json.dumps([rules, sorted(eligible)], sort_keys=True)
+                fingerprint = json.dumps([rules, {r: sorted(v) for r, v in scopes.items()}], sort_keys=True)
                 if get(db, 'rules') != fingerprint:
                     db.execute('DELETE FROM strikes'); put(db, 'rules', fingerprint)
                 if enabled:
@@ -214,17 +231,22 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                     db.execute('DELETE FROM strikes WHERE domain NOT IN (' + ','.join('?' for _ in eligible) + ')', tuple(eligible))
                     valid_tokens = {'missing-file': {token('f', value) for value in settings['missing_files']['paths']},
                                     'suspicious-query': {token('q', value) for value in settings['suspicious_queries']['targets']}}
+                    valid_tokens.update(custom_tokens)
                     sources = chain(not_found.distinct_metadata(events(db), sites), not_found.events(db,
                         [site for site in sites if site['domain'] in eligible and site.get('kind') != 'mail'], 'native')
-                        if settings['any_404']['enabled'] else []) if read_events else []
+                        if (settings['enabled'] and settings['any_404']['enabled']) or domains404 else []) if read_events else []
+                    sources = endpoint_404.expand(sources, selected404, domains404, start404, db=db)
                     for stamp, address, domain, reason, event_token, path, method in sources:
                         try:
                             stamp, ip = float(stamp), ipaddress.ip_address(address)
                         except ValueError:
                             continue
                         rule = rules.get(reason)
-                        if (not rule or not now - rule['findtime'] <= stamp <= now + 5
-                                or domain not in eligible or exempt(str(ip))
+                        custom = reason.startswith('endpoint-')
+                        if (not rule or not 0 <= stamp <= now + 5
+                                or ((not custom or reason == endpoint_404.REASON) and stamp < now - rule['findtime'])
+                                or (custom and reason != endpoint_404.REASON and rule['duration_seconds'] and stamp + rule['duration_seconds'] <= now)
+                                or domain not in scopes.get(reason, set()) or exempt(str(ip))
                                 or (reason in valid_tokens and event_token not in valid_tokens[reason])):
                             continue
                         if reason == 'not-found':
@@ -248,6 +270,11 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                         elif reason == 'missing-file':
                             count = db.execute('SELECT COUNT(DISTINCT token) FROM strikes WHERE ip=? AND reason=? AND stamp>=?',
                                                (address, reason, now-rule['findtime'])).fetchone()[0]
+                        elif reason == endpoint_404.REASON:
+                            count = db.execute('SELECT COUNT(*) FROM strikes WHERE ip=? AND reason=? AND stamp>=?',
+                                (address, reason, now-rule['findtime'])).fetchone()[0]
+                        elif custom:
+                            count = 1
                         elif reason == 'suspicious-query':
                             count = db.execute('SELECT COUNT(*) FROM strikes WHERE ip=? AND reason=? AND stamp>=?',
                                                (address, reason, now-rule['findtime'])).fetchone()[0]
@@ -255,11 +282,12 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                             count = db.execute("SELECT COUNT(*) FROM strikes WHERE ip=? AND reason IN ('private-file','repository') AND stamp>=?",
                                                (address, now-rule['findtime'])).fetchone()[0]
                         if count >= rule['maxretry'] and diverse:
-                            duration = rule['duration_days']
+                            duration = rule.get('duration_seconds', rule['duration_days'] * 86400)
+                            created = stamp if custom else now
                             evidence = ban_evidence.capture(db, address, reason, rule, count, now)
                             db.execute('INSERT OR REPLACE INTO bans (ip,domain,reason,created,expires,status,error) VALUES (?,?,?,?,?,?,?)',
-                                       (address, domain, reason, now, now + duration * 86400 if duration else 0, 'pending', ''))
-                            ban_evidence.store(db, address, now, evidence)
+                                       (address, domain, reason, created, created + duration if duration else 0, 'pending', ''))
+                            ban_evidence.store(db, address, created, evidence)
                             db.execute('DELETE FROM strikes WHERE ip=?', (address,))
                 else:
                     for _ in events(db):
@@ -268,7 +296,7 @@ def synchronize(policy, sites, state, native, now=None, remove=False, read_event
                 ban_evidence.prune(db)
                 put(db, 'enabled', int(enabled))
                 for row in db.execute("SELECT * FROM bans WHERE status IN ('active','pending')").fetchall():
-                    if not enabled or row['reason'] not in rules or row['domain'] not in eligible or exempt(row['ip']) or (row['expires'] and row['expires'] <= now):
+                    if not enabled or row['reason'] not in rules or row['domain'] not in scopes.get(row['reason'], set()) or exempt(row['ip']) or (row['expires'] and row['expires'] <= now):
                         if row['ip'] not in records and row['ip'] not in active:
                             ban_history.release(db, row, now)
                         db.execute("UPDATE bans SET status=?,error='' WHERE ip=?", ('removing' if row['ip'] in records or row['ip'] in active else 'released', row['ip']))

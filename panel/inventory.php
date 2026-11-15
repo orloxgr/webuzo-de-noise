@@ -1,7 +1,7 @@
 <?php
 if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 $prefix = 'hdn-' . $reviewKind;
-$reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : 'Analyze PHP 404s';
+$reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : ($reviewKind === 'endpoints' ? 'Analyze endpoint logs' : 'Analyze PHP 404s');
 ?>
 <section class="hdn-inventory u-mt20 u-mb20" aria-label="<?= $escape($reviewLabel) ?>">
 <h3 class="u-mb10"><?= $escape($reviewLabel) ?></h3>

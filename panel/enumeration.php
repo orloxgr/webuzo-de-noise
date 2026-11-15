@@ -20,7 +20,7 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 <?php foreach ($data['sites'] ?? [] as $site): if (($site['kind'] ?? 'web') !== 'web') continue; ?>
 <option value="<?= $escape($site['key']) ?>" <?= in_array($site['key'], $policy['enumeration']['targets'] ?? [], true) ? 'selected' : '' ?>><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option>
 <?php endforeach; ?>
-</select>
+</select><small class="hdn-select-help">Press CTRL to select/deselect</small>
 <p id="enumeration-targets-help" class="u-mb20">Leave the selection empty to cover all supported WordPress sites, or select specific domains. Their aliases share the setting. Sites without WordPress are skipped. Each domain still follows its own Off, Observe or Enforce mode.</p>
 <h3 class="u-mb10">How WordPress setup works</h3>
 <p class="u-mb10">For selected domains in <strong>Enforce</strong>, Save &amp; Apply automatically installs <strong>Webuzo De-Noise User Enumeration Guard</strong> as a <a href="https://developer.wordpress.org/advanced-administration/plugins/mu-plugins/" target="_blank" rel="noopener noreferrer">Must-Use (MU) plugin</a>. WordPress loads it automatically; no activation in wp-admin is needed. It appears under <strong>Plugins &gt; Must-Use</strong>.</p>

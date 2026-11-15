@@ -19,7 +19,7 @@ $chosen = $analysis['filters'];
 <label class="form-label">Review state<select class="form-select" data-hdn-filter="review">
 <?php foreach (['visible'=>'Visible (exclude ignored)','all'=>'All, including ignored','open'=>'Not reviewed','reviewed'=>'Reviewed','ignored'=>'Ignored'] as $value=>$label): ?><option value="<?= $value ?>" <?= $chosen['review']===$value ? 'selected' : '' ?>><?= $label ?></option><?php endforeach; ?>
 </select></label>
-<label class="form-label">Path contains<input class="form-control" type="search" maxlength="2048" data-hdn-filter="query" value="<?= $escape($chosen['query']) ?>"></label>
+<label class="form-label">Path contains<input class="form-control" type="search" data-hdn-filter="query" value="<?= $escape($chosen['query']) ?>"></label>
 <label class="form-label">Minimum hits<?= ($analysis['inventory_kind'] ?? '') === 'php_files' ? ' per exact path' : '' ?><input class="form-control" type="number" min="0" step="1" data-hdn-filter="min_hits" value="<?= $escape($chosen['min_hits']) ?>"></label>
 <?php if (($analysis['inventory_kind'] ?? '') === 'php_files'): ?><label class="form-label">Minimum domains<input class="form-control" type="number" min="0" step="1" data-hdn-filter="min_domains" value="<?= $escape($chosen['min_domains']) ?>"></label><?php endif; ?>
 </div>

@@ -12,6 +12,9 @@ to Webuzo.
   indexers, SEO/backlink crawlers and other data collection.
 - Private-file protection, login/XML-RPC limits, filtered-URL budgets and
   missing-static-file rules.
+- Custom exact-path or native PCRE endpoint rules, with optional website IP bans.
+- Selected-path bans after a configurable number of real final HTTP 404s.
+- Endpoint log analysis with grouped advice, individual path selection and CSV.
 - On-demand agent hit counts and PHP-path 404 counts by domain and time window,
   with selectable append to the editable lists.
 - Global website IP bans, with editable thresholds,
@@ -261,3 +264,37 @@ PHP 404 inventories separate URL characteristics from review priority. A repeate
 Log and PHP reviews have domain, priority, characteristic, review-state, path and minimum-hit filters. PHP reviews also filter by minimum domain count. Filters apply before pagination; CSV exports every matching exact result across all pages. Already rejected secret-file probes can be grouped by domain and expanded without losing their individual URLs.
 
 Mark reviewed, Ignore in findings and Reopen apply to one exact path on one domain, including future reviews. These root-private notes do not change protection settings or create allowlist exceptions. Ignored entries remain accessible through the review-state filter. Agents, request methods, parameter names and event times provide context in the log-review CSV. Known cron/cache transport parameters do not inflate content-filter diversity. WooCommerce, Complianz and UltraCache endpoints identify the work being performed.
+
+### Endpoints
+
+**Custom endpoint rules** match exact paths or native Nginx PCRE expressions on
+selected domains, or all web domains. Enforce returns 403 before the application,
+including when a file exists. Observe records matches; Off leaves requests alone.
+The first matching rule determines its optional **Also ban IP** action. Ban
+durations accept seconds, minutes, hours or days; 0 means permanent. These
+website bans use the existing De-Noise backend and its Never-ban/server-IP
+exceptions, independently of the global probe-ban switch.
+
+**Ban after repeated HTTP 404s for selected paths** counts actual final 404
+responses from one IP across the selected paths and domains. Choose attempts,
+counting window and ban duration independently. Repeating one selected path
+counts. Existing routes returning 200, redirects or other statuses keep normal
+routing. Enabling or changing the selections/threshold/window starts a fresh
+counting period, without retroactively banning requests from retained history.
+
+**Analyze endpoint logs** reviews all retained non-image paths, including JS,
+CSS, PHP, backups and application routes, across all recorded response statuses.
+It shows methods, declared agents, distinct client counts, cross-domain 404
+context and coverage. Filtering, review notes, pagination and CSV use the saved
+report; they do not enable protection.
+
+Every exact finding supports manual append as a disabled domain-scoped 403 rule
+with IP banning off. Every path with a recorded 404 can be appended to the 404
+list, even if other responses for that path succeeded. Recommendations do not
+restrict these manual actions. In grouped results, select the paths to append;
+an empty selection changes nothing. Existing list switches, thresholds,
+durations and domains are preserved. Review the result, then **Save & Apply**.
+
+New endpoint rules and the new 404 list start disabled and empty. They are
+managed by the hosting administrator. Existing settings remain in place after
+an upgrade, including when an older open settings form is submitted.

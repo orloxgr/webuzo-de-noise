@@ -35,7 +35,7 @@ def distinct_metadata(records, sites):
     for record in records:
         # Older installed snippets may still have emitted an early-404 event.
         # The native access record is authoritative for these virtual hosts.
-        if record[3] != 'not-found' or record[2] not in complete:
+        if record[3] not in ('not-found', 'endpoint-404-list') or record[2] not in complete:
             yield record
 
 

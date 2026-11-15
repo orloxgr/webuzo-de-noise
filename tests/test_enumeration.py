@@ -21,7 +21,7 @@ class EnumerationPolicyTests(unittest.TestCase):
     def test_upgrade_starts_off_and_rejects_injected_scope_or_non_boolean(self):
         old = {key: copy.deepcopy(DEFAULT[key]) if key in DEFAULT else {'allow_users':True,'sites':{}} for key in V9_KEYS}; old.pop('enumeration'); old['schema'] = 8
         upgraded = validate(old)
-        self.assertEqual(upgraded['schema'], 11)
+        self.assertEqual(upgraded['schema'], 13)
         self.assertEqual(upgraded['enumeration'], enumeration.SETTINGS)
         for value in ('yes', 1, None):
             bad = copy.deepcopy(DEFAULT); bad['enumeration']['enabled'] = value

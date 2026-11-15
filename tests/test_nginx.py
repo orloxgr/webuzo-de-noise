@@ -25,7 +25,7 @@ class Origin(BaseHTTPRequestHandler):
     hits = 0
     def do_GET(self):
         type(self).hits += 1
-        self.send_response(200); self.send_header('Content-Length', '2'); self.end_headers(); self.wfile.write(b'OK')
+        self.send_response(404 if self.path.split('?',1)[0] == '/selected-missing.js' else 200); self.send_header('Content-Length', '2'); self.end_headers(); self.wfile.write(b'OK')
     do_POST = do_GET
 
     def log_message(self, *args):
@@ -48,6 +48,21 @@ class NativeNginxTests(unittest.TestCase):
             probe.bind(('127.0.0.1', 0)); cls.port = probe.getsockname()[1]
         policy = copy.deepcopy(DEFAULT)
         policy['mode'] = 'enforce'
+        policy['endpoint_404'] = dict(enabled=True,paths=['/selected-missing.js','/existing.js','/local404.js'],
+            targets=['alice/enforce.test','alice/observe.test','alice/off.test'],duration_seconds=120,maxretry=1,findtime=300)
+        policy['custom_endpoints'] = [
+            dict(id='backups',name='Backup scans',enabled=True,type='regex',
+                 pattern=r'(?i)^/bak(?|\.sql\.gz|\.sql\.zip|\.sql\.zst)$',
+                 targets=['alice/enforce.test','alice/observe.test','alice/off.test'],also_ban=True,duration_seconds=120),
+            dict(id='literal_endpoint',name='Literal endpoint',enabled=True,type='exact',pattern='/back[up]+$.zip',
+                 targets=[],also_ban=False,duration_seconds=86400),
+            dict(id='existing_endpoint',name='Existing endpoint',enabled=True,type='exact',pattern='/backup.zip',
+                 targets=['alice/enforce.test'],also_ban=False,duration_seconds=86400),
+            dict(id='quoted_regex',name='Quoted punctuation',enabled=True,type='regex',pattern=r'^/quote";#\.zip$',
+                 targets=[],also_ban=False,duration_seconds=86400),
+            dict(id='overlap',name='Later overlapping ban rule',enabled=True,type='regex',pattern=r'^/backup\.zip$',
+                 targets=[],also_ban=True,duration_seconds=120)]
+        (cls.directory/'backup.zip').write_text('existing file')
         cls.literal = 'Odd";${literal}#(a)+[b]\\c'
         policy['agents'] = ['Crawler', cls.literal]
         policy['scanners'] = True
@@ -86,7 +101,7 @@ class NativeNginxTests(unittest.TestCase):
             text += 'server { listen 127.0.0.1:' + str(cls.port) + '; server_name ' + host + ' www.' + host + ';\n'
             text += site_config(policy, site, cls.directory.as_posix()).replace('/var/log/webuzo-de-noise/matches.log',
                                                      (cls.directory / 'matches.log').as_posix()).replace('/var/log/webuzo-de-noise/ban-events.log', (cls.directory / 'ban-events.log').as_posix())
-            text += 'location / { proxy_pass http://127.0.0.1:' + str(cls.origin_port) + '; }\n}\n'
+            text += 'location = /local404.js { return 404; }\nlocation / { proxy_pass http://127.0.0.1:' + str(cls.origin_port) + '; }\n}\n'
         text += '}\n'
         (cls.directory / 'nginx.conf').write_text(isolated_config(text, cls.directory))
         cls.command = [NGINX, '-p', cls.directory.as_posix() + '/', '-c', 'nginx.conf']
@@ -123,6 +138,68 @@ class NativeNginxTests(unittest.TestCase):
         response = connection.getresponse()
         status = response.status; response.read(); connection.close()
         return status
+
+    def test_custom_endpoints_native_pcre_exact_scope_modes_and_event_privacy(self):
+        before = Origin.hits
+        self.assertEqual(self.request('/bak.sql.gz?token=private-endpoint-value'),403)
+        self.assertEqual(self.request('/BAK.sql.zip'),403)
+        self.assertEqual(self.request('/bak.sql.zst'),403)
+        self.assertEqual(self.request('/backup.zip'),403)  # Existing file intentionally blocked.
+        self.assertEqual(self.request('/back[up]+$.zip'),403)
+        self.assertEqual(self.request('/quote%22%3B%23.zip'),403)
+        self.assertEqual(Origin.hits,before)
+        self.assertEqual(self.request('/backu.zip'),200)
+        self.assertEqual(self.request('/bak.sql.gz',host='other.test'),200)
+        self.assertEqual(self.request('/bak.sql.gz',host='observe.test'),200)
+        self.assertEqual(self.request('/bak.sql.gz',host='off.test'),200)
+        self.assertEqual(self.request('/bak.sql.gz',host='www.enforce.test'),403)
+        time.sleep(.02)
+        import json
+        events=[json.loads(line) for line in (self.directory/'ban-events.log').read_text().splitlines() if line.startswith('{')]
+        endpoint=[e for e in events if e['reason']=='endpoint-backups']
+        self.assertTrue(endpoint)
+        self.assertTrue(all(e['domain']=='enforce.test' for e in endpoint))
+        self.assertTrue(all('?' not in e['path'] for e in endpoint))
+        self.assertFalse(any(e['reason']=='endpoint-overlap' for e in events))
+        self.assertIn('endpoint-backups',(self.directory/'matches.log').read_text())
+
+    def test_large_suggestion_groups_compile_as_individual_exact_rules(self):
+        import endpoint_inventory
+        rows=[dict(site='alice/enforce.test',domain='enforce.test',path=f'/private/{i}/wp-config.old',
+                   candidate=f'/private/{i}/wp-config.old',count=1,statuses={'404':1}) for i in range(300)]
+        paths=endpoint_inventory.proposals(rows)[0]['block_paths']
+        policy=copy.deepcopy(DEFAULT)
+        policy['custom_endpoints']=[dict(id=f'proposed_{i}',name=path,enabled=False,type='exact',
+            pattern=path,targets=['alice/enforce.test'],also_ban=False,duration_seconds=86400) for i,path in enumerate(paths)]
+        text='pid logs/exact-groups.pid; error_log logs/exact-groups.log; events {} http {\n'+global_config(policy,[])+ '}\n'
+        candidate=self.directory/'exact-groups.conf';candidate.write_text(text)
+        result=subprocess.run([NGINX,'-p',self.directory.as_posix()+'/', '-c',str(candidate),'-t'],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+
+    def test_invalid_endpoint_pcre_is_rejected_by_native_nginx(self):
+        policy=copy.deepcopy(DEFAULT)
+        policy['custom_endpoints']=[dict(id='invalid',name='Invalid PCRE',enabled=True,type='regex',
+            pattern='^(unclosed',targets=[],also_ban=False,duration_seconds=60)]
+        text='events {} http {\n'+global_config(policy,[])+ '}\n'
+        candidate=self.directory/'invalid-endpoint.conf';candidate.write_text(text)
+        result=subprocess.run([NGINX,'-p',self.directory.as_posix()+'/', '-c',str(candidate),'-t'],capture_output=True,text=True)
+        self.assertNotEqual(result.returncode,0)
+        self.assertIn('pcre',result.stderr.lower())
+        self.assertEqual(self.request('/'),200)
+
+    def test_selected_404_paths_use_real_final_status_without_forcing_routing(self):
+        self.assertEqual(self.request('/existing.js'),200)
+        self.assertEqual(self.request('/selected-missing.js?token=never-record'),404)
+        self.assertEqual(self.request('/local404.js'),404)
+        self.assertEqual(self.request('/selected-missing.js',host='observe.test'),404)
+        self.assertEqual(self.request('/selected-missing.js',host='off.test'),404)
+        time.sleep(.02)
+        import json
+        events=[json.loads(line) for line in (self.directory/'ban-events.log').read_text().splitlines() if line.startswith('{')]
+        selected=[e for e in events if e['reason']=='endpoint-404-list']
+        self.assertEqual({e['path'] for e in selected},{'/selected-missing.js','/local404.js'})
+        self.assertTrue(all(e['domain']=='enforce.test' for e in selected))
+        self.assertNotIn('never-record',json.dumps(selected))
 
     def test_agent_blocks_case_insensitive_literal_and_observe_off_allow(self):
         self.assertEqual(self.request(agent='Some CRAWLER v1'), 403)

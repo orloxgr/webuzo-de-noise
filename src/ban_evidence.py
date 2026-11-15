@@ -84,8 +84,11 @@ def prune(db, domain=False):
 
 def capture(db, address, reason, rule, count, now, site=None):
     table = 'domain_strikes' if site is not None else 'strikes'
-    where = 's.ip=? AND s.stamp>=?'
-    args = [address, now - rule['findtime']]
+    where = 's.ip=?'
+    args = [address]
+    if not reason.startswith('endpoint-') or reason == 'endpoint-404-list':
+        where += ' AND s.stamp>=?'
+        args.append(now - rule['findtime'])
     if site is not None:
         where += ' AND s.site=?'; args.append(site)
     if reason in ('private-file', 'repository'):
@@ -102,6 +105,8 @@ def capture(db, address, reason, rule, count, now, site=None):
                     reason=r[2], path=path_only(r[3]), method=method_only(r[4])) for r in reversed(rows)]
     details = dict(v=1, count=count, maxretry=rule['maxretry'], findtime=rule['findtime'],
                    duration_days=rule['duration_days'], samples=samples)
+    if reason.startswith('endpoint-'):
+        details.update(duration_seconds=rule['duration_seconds'], rule_name=rule['rule_name'])
     if reason in ('not-found', 'domain-404'):
         details.update(min_distinct_paths=rule['min_distinct_paths'], exclude_static=rule['exclude_static'])
     return json.dumps(details, separators=(',', ':'))

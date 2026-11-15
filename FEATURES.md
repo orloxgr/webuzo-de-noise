@@ -104,3 +104,37 @@ The original test-environment policy, access profiles and unit files were restor
 - Rejected secret-file probes can be summarized by domain while preserving exact paths, review controls and full CSV records.
 - Cron/cache transport tokens no longer inflate filter diversity. Known WooCommerce, Complianz and UltraCache endpoints show the work being performed.
 - Log-review CSV includes parameter names, methods, declared agents, event times and source filenames when recorded. Existing reports are read without rewriting their saved counts or inventing unavailable evidence.
+
+## Endpoint protection and review in 0.5.0
+
+- Ports the remaining applicable Hestia De-Noise changes through 0.21.0. The
+  full comparison from the previously recorded 0.17.2 base is in
+  [UPSTREAM-PORT.md](UPSTREAM-PORT.md).
+- Named exact-path/native-PCRE rules with domain scope, Observe/Enforce behavior,
+  optional website IP bans and exact duration units.
+- Selected-path final-404 bans with independent attempts, counting window and
+  duration. Real repeated requests count; non-404 responses do not. Existing
+  files and application routing are unchanged by this list.
+- Read-only endpoint inventories cover retained non-image paths and every
+  response status, including compressed rotations. Saved findings provide
+  advice, review notes/filters, full CSV, groups and selected-path append.
+- Manual append remains available for every exact finding, independently of
+  advice. A recorded 404 permits 404-list append even for mixed-status paths.
+  Grouped append uses selected options only; empty selection is a no-op.
+- Endpoint controls use five collapsible sections; IP-ban sections and toolbar
+  actions gain corresponding organization/help. Native multi-select controls
+  explain Ctrl selection, including dynamically cloned rule templates.
+- New settings start disabled/empty. Webuzo schema 11 settings and already open
+  old forms preserve new settings when saved through the updated backend.
+- A verified complete native Webuzo access log is authoritative for final 404s;
+  duplicate structured records are ignored. Sites without a verified complete
+  log use source-multiplicity reconciliation without summing overlapping layers.
+- Validation: Linux/root suite ran 434 tests, with 427 passing and 7 skipped;
+  this includes 23 real native Nginx tests. All 30 panel PHP files passed lint.
+  All 43 Node regressions passed. The rendered PHP/Edge fixture passed selected
+  append, empty selection, deduplication, settings preservation, form association,
+  accordions and layout checks at 1280px and 390px. The actual PHP save parser
+  passed duration/attempt/window and old-form tests.
+- Tests used a private source tree in the Webuzo VM. The VM's expired panel
+  license prevented a new end-to-end plugin-manager upload; the existing native
+  installation and production servers were not changed.

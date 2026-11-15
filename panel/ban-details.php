@@ -7,8 +7,8 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 <p>No request details were saved for this older ban.</p>
 <?php else: ?>
 <p class="u-mt10"><strong><?= $escape($banDetails['count']) ?> matches</strong>;
-threshold <?= $escape($banDetails['maxretry']) ?> in <?= $escape($banDetails['findtime']) ?> seconds.
-Duration at trigger: <?= empty($banDetails['duration_days']) ? 'permanent' : $escape($banDetails['duration_days']) . ' days' ?>.</p>
+<?php if (isset($banDetails['rule_name'])): ?>endpoint rule <strong><?= $escape($banDetails['rule_name']) ?></strong>; threshold <?= $escape($banDetails['maxretry']) ?><?= $banDetails['findtime'] ? ' in ' . $escape($banDetails['findtime']) . ' seconds' : '' ?>.<?php else: ?>threshold <?= $escape($banDetails['maxretry']) ?> in <?= $escape($banDetails['findtime']) ?> seconds.<?php endif; ?>
+Duration at trigger: <?= isset($banDetails['duration_seconds']) ? ($banDetails['duration_seconds'] ? $escape($banDetails['duration_seconds']) . ' seconds' : 'permanent') : (empty($banDetails['duration_days']) ? 'permanent' : $escape($banDetails['duration_days']) . ' days') ?>.</p>
 <?php if (isset($banDetails['min_distinct_paths'])): ?><p>Minimum different paths: <?= $escape($banDetails['min_distinct_paths']) ?>. Missing static assets: <?= !empty($banDetails['exclude_static']) ? 'excluded' : 'counted' ?>.</p><?php endif; ?>
 <p>Last <?= count($banDetails['samples']) ?> matching requests (UTC):</p>
 <ul>

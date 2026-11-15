@@ -9,10 +9,10 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <script>document.title = 'De-Noise';</script>
 <style><?php readfile($install . '/panel/ui.css'); ?></style>
 <div class="toolbar" id="hdn-toolbar"><div class="toolbar-inner"><div class="toolbar-buttons">
-    <a class="button button-secondary" href="index.php"><i class="fas fa-arrow-left icon-blue"></i>Back</a>
+    <a class="button button-secondary" href="index.php" title="Return to the Webuzo dashboard."><i class="fas fa-arrow-left icon-blue"></i>Back</a>
     <?php if ($isAdmin): ?>
-    <form method="post"><?php $fields('sync'); ?><button class="button button-secondary" type="submit">Synchronize now</button></form>
-    <form method="post"><?php $fields('disable'); ?><button class="button button-secondary" type="submit">Disable website protection</button></form>
+    <form method="post"><?php $fields('sync'); ?><button class="button button-secondary" type="submit" title="Discover domains, reapply saved HTTP rules and reconcile automatic web bans. Unsaved edits are not saved.">Synchronize now</button></form>
+    <form method="post"><?php $fields('disable'); ?><button class="button button-secondary" type="submit" title="Turn off De-Noise website rules for all domains and disable its WordPress login jail. Website bans are released during maintenance. Service jails keep their own settings.">Disable website protection</button></form>
     <?php endif; ?>
 </div></div></div>
 <div class="container" id="hdn-container"><div class="form-container form-container-wide">
@@ -70,15 +70,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <p class="u-mt10">Lists describe crawler purposes, not whether requests are malicious. Suggested entries are optional. To limit crawlers only on particular URLs, use Filtered URLs.</p>
     <?php $reviewKind = 'agents'; require $install . '/panel/inventory.php'; unset($reviewKind); ?>
 <?php elseif ($key === 'endpoints'): ?>
-    <h2 class="u-mb20">Endpoint rate limits</h2>
-    <?php foreach (['login' => 'WordPress login — POST /wp-login.php', 'xmlrpc' => 'WordPress XML-RPC — POST /xmlrpc.php'] as $endpoint => $name): ?>
-    <h3 class="u-mb10"><?= $escape($name) ?></h3>
-    <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="<?= $endpoint ?>_enabled" <?= !empty($policy[$endpoint]['enabled']) ? 'checked' : '' ?>> Enabled</label>
-    <label class="form-label" for="<?= $endpoint ?>-rate">Requests per minute, per client and domain</label>
-    <input form="hdn-settings" class="form-control u-mb10" id="<?= $endpoint ?>-rate" type="number" min="1" name="<?= $endpoint ?>_rate" value="<?= $escape($policy[$endpoint]['rate'] ?? 5) ?>" required>
-    <label class="form-label" for="<?= $endpoint ?>-burst">Burst allowance</label>
-    <input form="hdn-settings" class="form-control u-mb20" id="<?= $endpoint ?>-burst" type="number" min="0" name="<?= $endpoint ?>_burst" value="<?= $escape($policy[$endpoint]['burst'] ?? 3) ?>" required>
-    <?php endforeach; ?>
+    <?php require $install . '/panel/endpoints.php'; ?>
 <?php elseif ($key === 'filters' || $key === 'static'): ?>
     <?php $ruleModule = $key; require $install . '/panel/rules.php'; unset($ruleModule); ?>
 <?php elseif ($key === 'bans'): ?>

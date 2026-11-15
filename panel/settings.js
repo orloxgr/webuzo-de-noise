@@ -16,7 +16,7 @@
         const storageKey = 'hdn-review:' + location.pathname + ':' + actionPrefix + ':' + (scanForm.dataset?.hdnContext || '');
         let job = null, active = false, generation = 0;
         let completedJob = null, appending = false;
-        const supportsFilters = ['log_scan','php_files'].includes(actionPrefix);
+        const supportsFilters = ['log_scan','php_files','endpoints'].includes(actionPrefix);
         const filterDefaults = {domain:'all',priority:'all',feature:'all',review:'visible',query:'',min_hits:0,min_domains:0,group_rejected:true};
         let findingFilters = {...filterDefaults}, viewGeneration = 0;
         let perPage = '20';
@@ -32,7 +32,7 @@
                 feature:['all','probe','configuration','repeated','application','unexpected','cross_domain','client_sweep','encoded','unknown','security','errors','rejected','technical','frontend','crawl','asset','activity']};
             for (const [key, allowed] of Object.entries(choices)) if (!allowed.includes(findingFilters[key])) findingFilters[key] = filterDefaults[key];
             for (const key of ['min_hits','min_domains']) if (!Number.isSafeInteger(findingFilters[key]) || findingFilters[key] < 0) findingFilters[key] = 0;
-            if (findingFilters.query.length > 2048 || /[\x00-\x1f]/.test(findingFilters.query)) findingFilters.query = '';
+            if (/[\x00-\x1f]/.test(findingFilters.query)) findingFilters.query = '';
             if (!/^[a-zA-Z0-9.-]+$/.test(findingFilters.domain)) findingFilters.domain = 'all';
         }
         const appendButtons = actionPrefix === 'agents' ? [...document.querySelectorAll('[data-hdn-append-analyzed]')] : [];
@@ -354,6 +354,7 @@
     initializeReview('hdn-activity-scan', 'hdn-activity', 'activity', 'activity', 'Refresh activity');
     initializeReview('hdn-agents-scan', 'hdn-agents', 'agents', 'agents', 'Analyze current agents');
     initializeReview('hdn-php_files-scan', 'hdn-php_files', 'php_files', 'bans', 'Analyze PHP 404s');
+    initializeReview('hdn-endpoints-scan', 'hdn-endpoints', 'endpoints', 'endpoints', 'Analyze endpoint logs');
     const appendLines = (field, values, insensitive = false) => {
         const lines = field.value.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
         const key = value => insensitive ? value.toLowerCase() : value;

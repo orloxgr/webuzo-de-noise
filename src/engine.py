@@ -30,7 +30,7 @@ import access_protection
 import captcha_runtime
 import country_database
 
-REVIEW_ACTIONS = ('review_mark', 'review_export', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files') for action in ('start', 'status', 'cancel'))
+REVIEW_ACTIONS = ('review_mark', 'review_export', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files', 'endpoints') for action in ('start', 'status', 'cancel'))
 
 import webuzo
 import integration
@@ -369,7 +369,7 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
     ban_status = {}
     if owner is None:
         try:
-            ban_status = auto_bans.report(STATE, policy['bans']['enabled'],
+            ban_status = auto_bans.report(STATE, policy['bans']['enabled'] or policy['endpoint_404']['enabled'] or any(r['enabled'] and r['also_ban'] for r in policy['custom_endpoints']),
                 listing.get('bans_page', 1), listing.get('bans_view', 'active'), per_page=listing.get('bans_per_page',50))
         except (OSError, ValueError) as error:
             ban_status = {'error': str(error)}
@@ -507,7 +507,7 @@ def dispatch(request):
                 request['actor'], request.get('category'), request.get('offset', 0))}
         if set(request) - {'actor', 'owner', 'action', 'target', 'minutes', 'verify_google', 'listing', 'job', 'page', 'offset', 'per_page', 'filters'}:
             raise ValueError('Only log-analysis selections can be submitted')
-        for kind in ('agents', 'php_files'):
+        for kind in ('agents', 'php_files', 'endpoints'):
             if not request['action'].startswith(kind + '_'):
                 continue
             operation = request['action'][len(kind) + 1:]
@@ -651,9 +651,13 @@ def dispatch(request):
             raise ValueError('Expected policy settings')
         previous = policy
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') not in (9, 10, 11):
+        if incoming.get('schema') != 13:
+            policy['endpoint_404'] = previous['endpoint_404']
+        if incoming.get('schema') not in (12, 13):
+            policy['custom_endpoints'] = previous['custom_endpoints']
+        if incoming.get('schema') not in (9, 10, 11, 12, 13):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9, 10, 11):
+        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):
@@ -670,7 +674,7 @@ def dispatch(request):
             for key in ('missing_files', 'suspicious_queries'):
                 policy['bans'][key] = previous['bans'][key]
             policy['probe_exceptions'] = previous['probe_exceptions']
-        if policy['bans']['enabled']:
+        if policy['bans']['enabled'] or policy['endpoint_404']['enabled'] or any(r['enabled'] and r['also_ban'] for r in policy['custom_endpoints']):
             auto_bans.Native(webuzo.HOME, run, STATE).available()
         apply(policy, sites)
     elif action == 'bulk':

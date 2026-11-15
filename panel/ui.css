@@ -114,3 +114,44 @@
 .hdn-review-note { display: flex; gap: 7px; flex-wrap: wrap; align-items: end; }
 .hdn-review-note label { min-width: 160px; }
 .hdn-review-note small { flex-basis: 100%; }
+
+/* Endpoint evidence and actions: one full-width path field, then wrapping controls. */
+#hdn-endpoints-output .hdn-endpoint-card { border: 1px solid #8792a680; border-radius: 8px; margin: 12px 0; overflow: hidden; }
+#hdn-endpoints-output .hdn-endpoint-card > summary { cursor: pointer; padding: 14px 16px; background: #8792a610; overflow-wrap: anywhere; }
+#hdn-endpoints-output .hdn-endpoint-card > summary span { margin-inline: 10px; }
+#hdn-endpoints-output .hdn-endpoint-card > summary small { white-space: nowrap; opacity: .8; }
+#hdn-endpoints-output .hdn-endpoint-card-body { padding: 4px 16px 16px; min-width: 0; }
+#hdn-endpoints-output .hdn-endpoint-meta { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0; font-size: .9em; }
+#hdn-endpoints-output .hdn-endpoint-paths-label { display: block; margin: 14px 0 12px; }
+#hdn-endpoints-output .hdn-endpoint-paths { display: block; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin-top: 6px; font-family: monospace; }
+#hdn-endpoints-output .hdn-endpoint-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+#hdn-endpoints-output .hdn-endpoint-actions .button { margin: 0; white-space: normal; height: auto; max-width: 100%; }
+#hdn-endpoints-output .hdn-endpoint-help { font-size: .9em; opacity: .85; margin: 10px 0 14px; }
+#hdn-endpoints-output .hdn-endpoint-observed summary { cursor: pointer; }
+#hdn-endpoints-output .hdn-endpoint-observed code { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+    #hdn-endpoints-output .hdn-endpoint-card > summary span { display: block; margin: 6px 0; }
+    #hdn-endpoints-output .hdn-endpoint-actions .button { width: 100%; }
+}
+
+/* Endpoint categories use the same native accordion headers as IP bans. */
+#hdn-container .hdn-endpoint-section > .box-collapse-header { position: relative; padding-right: 48px; overflow-wrap: anywhere; }
+#hdn-container .hdn-endpoint-section > .box-collapse-content { padding: 18px 20px; min-width: 0; }
+#hdn-container .hdn-endpoint-section > .box-collapse-content .form-control,
+#hdn-container .hdn-endpoint-section > .box-collapse-content .form-select { width: 100%; box-sizing: border-box; }
+#hdn-container .hdn-endpoint-section > .box-collapse-header::after,
+#hdn-endpoints-output .hdn-endpoint-card > summary::after {
+    content: ""; position: absolute; top: 50%; right: 20px; width: 9px; height: 9px;
+    margin-top: -7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+    background: none; transform: rotate(45deg); opacity: .75;
+}
+#hdn-container .hdn-endpoint-section[open] > .box-collapse-header::after,
+#hdn-endpoints-output .hdn-endpoint-card[open] > summary::after { transform: rotate(225deg); margin-top: -2px; }
+#hdn-endpoints-output .hdn-endpoint-card > summary { position: relative; padding-right: 48px; }
+#hdn-container .hdn-endpoint-section > .box-collapse-header:focus-visible,
+#hdn-endpoints-output .hdn-endpoint-card > summary:focus-visible { outline: 2px solid #7e8be1; outline-offset: -2px; }
+@media (max-width: 640px) {
+    #hdn-container .hdn-endpoint-section > .box-collapse-content { padding: 14px 12px; }
+}
+
+.hdn-select-help { display: block; margin-top: 6px; font-size: .88em; font-weight: normal; opacity: .85; }

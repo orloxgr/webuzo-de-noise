@@ -23,7 +23,7 @@
         if (preg_match('/\b(Googlebot(?:-[A-Za-z]+)?|bingbot|Applebot|DuckDuckBot|YandexBot|YisouSpider|Baiduspider|PetalBot|AhrefsBot|SemrushBot|GPTBot|ClaudeBot)\b/i', $agent, $match)) $label = $match[0] . ' (declared)';
         return '<details class="hdn-activity-agent-details"><summary title="' . $escape($agent) . '">' . $escape($label) . '</summary><div>' . $escape($agent) . '</div></details>';
     };
-    $ruleHtml = static function ($rule) use ($escape): string {
+    $ruleHtml = static function ($rule) use ($escape, $data): string {
         $labels = ['login' => 'WordPress login rate limit', 'xmlrpc' => 'XML-RPC rate limit',
             'agent' => 'User-Agent rule', 'private-file' => 'Private file protection',
             'global-ban' => 'Global website IP ban', 'domain-ban' => 'Domain IP ban', 'user-enumeration' => 'User enumeration',
@@ -35,6 +35,9 @@
         $label = $labels[$rule] ?? (strpos($rule, 'filter-limit-') === 0 ? 'Filtered URL rate limit' :
             (strpos($rule, 'filter-block-') === 0 ? 'Filtered URL block' :
             (strpos($rule, 'static-') === 0 ? 'Missing static file rule' : $rule)));
+        foreach ($data['policy']['custom_endpoints'] ?? [] as $endpoint) {
+            if ($rule === 'endpoint-' . $endpoint['id']) $label = 'Endpoint: ' . $endpoint['name'];
+        }
         return $escape($label) . ($label !== $rule ? '<small class="hdn-activity-rule-id">' . $escape($rule) . '</small>' : '');
     };
     $outcomes = ['blocked' => 'Blocked', 'matched' => 'No block recorded', 'observed' => 'Observe only'];

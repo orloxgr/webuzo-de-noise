@@ -33,7 +33,7 @@ def filters(value=None):
     from policy import domain
     if result['domain'] != 'all':
         domain(result['domain'])
-    if not isinstance(result['query'], str) or len(result['query']) > 2048 or any(ord(c) < 32 for c in result['query']):
+    if not isinstance(result['query'], str) or any(ord(c) < 32 for c in result['query']):
         raise ValueError('Invalid path search')
     for key in ('min_hits', 'min_domains'):
         if type(result[key]) is not int or result[key] < 0:
@@ -114,6 +114,9 @@ def scan_info(row):
 
 def prepare(row, kind):
     row = copy.deepcopy(row)
+    if kind == 'endpoints':
+        import endpoint_inventory
+        return endpoint_inventory.decorate(row)
     if kind == 'php_files':
         if row.get('members'):
             row['members'] = [prepare(r, kind) for r in row['members']]

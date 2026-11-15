@@ -37,7 +37,7 @@ $renderRule = static function (string $module, $index, array $rule) use ($escape
             <?php endforeach; foreach (array_diff($targets, $known) as $old): ?>
             <option value="<?= $escape($old) ?>" selected><?= $escape($old) ?> (unavailable)</option>
             <?php endforeach; ?>
-        </select></label>
+        </select><small class="hdn-select-help">Press CTRL to select/deselect</small></label>
         <?php if ($filter): ?>
         <button type="button" class="button button-secondary u-mt10" data-hdn-robots title="Preview robots.txt directives for this rule's path and parameter names. This only prepares text for review; it does not write a website file or save this rule. Use only when these filtered URLs should stay out of search.">Preview robots.txt suggestions</button>
         <?php endif; ?>

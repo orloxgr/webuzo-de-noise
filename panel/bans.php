@@ -5,19 +5,21 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 <h2 class="u-mb20">Automatic IP bans</h2>
 <label class="form-label u-block u-mb20"><input form="hdn-settings" type="checkbox" name="bans_enabled" <?= !empty($ban['enabled']) ? 'checked' : '' ?>> Enable automatic server-wide web bans</label>
 <p class="u-mb20">Selected probes are rejected immediately. Automatic IPv4 and IPv6 bans synchronize within about one minute and affect the websites managed by De-Noise. SSH, email and panel access remain available.</p>
+<details class="box-collapse u-mb20" id="hdn-probe-direct" open><summary class="box-collapse-header">Direct secret / repository probes</summary><div class="box-collapse-content">
 <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="bans_private_files" <?= !empty($ban['private_files']) ? 'checked' : '' ?>> Secret and configuration-file probes, including traversal to secret paths</label>
 <label class="form-label u-block u-mb20"><input form="hdn-settings" type="checkbox" name="bans_repositories" <?= !empty($ban['repositories']) ? 'checked' : '' ?>> Source-control metadata probes (.git, .svn, .hg)</label>
-<h3 class="u-mb10">Direct secret / repository probes</h3>
+
 <?php foreach (['maxretry' => ['Matching requests before ban', 1, 1],
                'findtime' => ['Counting window (seconds)', 1, 300],
                'duration_days' => ['Ban duration (days; 0 = permanent), for existing and new bans', 0, 0]] as $key => [$label, $minimum, $default]): ?>
 <div class="u-mb20"><label class="form-label" for="bans-<?= $key ?>"><?= $escape($label) ?></label>
 <input form="hdn-settings" class="form-control" type="number" id="bans-<?= $key ?>" name="bans_<?= $key ?>" min="<?= $minimum ?>" value="<?= $escape($ban[$key] ?? $default) ?>" required></div>
 <?php endforeach; ?>
+</div></details>
 <?php foreach (['missing_files' => ['Ban IPs that 404 any of these files X times', 'paths', 'Selected PHP file paths — one per line', 'probe_files'],
                'suspicious_queries' => ['Ban IPs that 404 suspicious queries X times', 'targets', 'Secret file targets in query values — one per line', 'probe_queries']] as $key => [$title, $field, $label, $preset]):
     $rule = $ban[$key] ?? []; ?>
-<details class="box-collapse u-mb20" open>
+<details class="box-collapse u-mb20" id="hdn-probe-<?= $key ?>" open>
 <summary class="box-collapse-header"><?= $escape($title) ?></summary>
 <div class="box-collapse-content">
 <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="bans_<?= $key ?>_enabled" <?= !empty($rule['enabled']) ? 'checked' : '' ?>> Enabled</label>
@@ -40,7 +42,7 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 </div></details>
 <?php endforeach; ?>
 <?php $notFound = $ban['any_404'] ?? []; ?>
-<h3 class="u-mb10">Ban IPs after repeated 404 responses</h3>
+<details class="box-collapse u-mb20" id="hdn-probe-any_404" open><summary class="box-collapse-header">Ban IPs after repeated 404 responses</summary><div class="box-collapse-content">
 <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="bans_any_404_enabled" <?= !empty($notFound['enabled']) ? 'checked' : '' ?>> Enable general 404 bans</label>
 <?php foreach (['maxretry' => ['404 responses before ban', 1, 10],
                'findtime' => ['Counting window (seconds)', 1, 300],
@@ -51,8 +53,9 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 <label class="form-label u-block u-mb10">Minimum different URL paths
 <input form="hdn-settings" class="form-control" type="number" name="bans_any_404_min_distinct_paths" min="1" value="<?= $escape($notFound['min_distinct_paths'] ?? 3) ?>" required title="Require this many different URL paths as well as the request threshold within the counting window. Query strings do not create different paths. Set 1 to allow repeated requests to one path."></label>
 <p class="u-mb20">Both limits must be reached. Counts apply per IP across selected web domains. Other status codes do not count. Explicit security probes retain their separate stricter counters. Existing bans are preserved.</p>
+</div></details>
 <?php if (!empty($webSites)): ?>
-<h3 class="u-mb10">Probe exceptions by domain</h3>
+<details class="box-collapse u-mb20" id="hdn-probe-exceptions" open><summary class="box-collapse-header">Probe exceptions by domain</summary><div class="box-collapse-content">
 <label class="form-label" for="hdn-probe-domain">Domain</label>
 <select class="form-select u-mb10" id="hdn-probe-domain">
 <?php foreach ($webSites as $site): ?><option value="<?= $escape($site['key']) ?>"><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option><?php endforeach; ?>
@@ -65,16 +68,17 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 <?php endforeach; ?></div>
 <?php endforeach; ?>
 <p class="u-mb20">Exceptions bypass only their selected probe category, including its ban counter. Other protection remains active. Save &amp; Apply saves every domain.</p>
+</div></details>
 <?php endif; ?>
 <label class="form-label" for="bans-targets">Domains that can trigger a ban (empty selection means all)</label>
 <select form="hdn-settings" class="form-select u-mb20" id="bans-targets" name="bans_targets[]" multiple size="4">
 <?php foreach ($webSites as $site): ?>
 <option value="<?= $escape($site['key']) ?>" <?= in_array($site['key'], $ban['targets'] ?? [], true) ? 'selected' : '' ?>><?= $escape($site['domain'] . ' · ' . $site['owner']) ?></option>
-<?php endforeach; ?></select>
+<?php endforeach; ?></select><small class="hdn-select-help">Press CTRL to select/deselect</small>
 <label class="form-label" for="bans-ignore">Never ban — one IP address or CIDR network per line</label>
 <textarea form="hdn-settings" class="form-control u-mb20" id="bans-ignore" name="bans_ignore_ips" rows="4" spellcheck="false"><?= $escape(implode("\n", $ban['ignore_ips'] ?? [])) ?></textarea>
 <p class="u-mb20">Never-ban entries bypass automatic IP bans only. Unselected 404s count only when general 404 bans are enabled. Crawler limits and User-Agent blocks do not count as 404s. Observe/Off domains do not trigger bans. Web bans support IPv4 and IPv6.</p>
-<h3 class="u-mb10">Ban status</h3>
+<details class="box-collapse u-mb20" id="hdn-ban-status" open><summary class="box-collapse-header">Ban status</summary><div class="box-collapse-content">
 <?php $maintenance = $data['maintenance'] ?? []; ?>
 <p class="u-mb10">Last successful maintenance: <?= !empty($maintenance['last_success']) ? $escape(gmdate('Y-m-d H:i:s', (int)$maintenance['last_success']) . ' UTC') : 'Not recorded yet' ?></p>
 <form method="post" class="u-mb20"><?php $fields('history_settings_save'); ?>
@@ -103,3 +107,5 @@ $webSites = array_values(array_filter($data['sites'] ?? [], static fn($site) => 
 <?php if (!$historyView): ?></form><?php endif; ?>
 
 </div>
+
+</div></details>

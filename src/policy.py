@@ -7,10 +7,12 @@ from urllib.parse import quote, unquote
 import probe_rules
 import enumeration
 import agent_catalog
+import endpoints
+import endpoint_404
 import access_protection
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.4.3'
+VERSION = '0.5.0'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
@@ -20,7 +22,7 @@ CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
 SEARCH_AGENTS = agent_catalog.SEARCH
 PRESET_AGENTS = SCANNER_AGENTS + CRAWLER_AGENTS[:3]
 FILTER_AGENTS = ['Applebot', 'Amazonbot', 'Reflectionbot', 'Googlebot', 'bingbot']
-DEFAULT = {'schema': 11, 'mode': 'observe', 'agents': [], 'scanners': False,
+DEFAULT = {'schema': 13, 'custom_endpoints': [], 'endpoint_404': copy.deepcopy(endpoint_404.DEFAULT), 'mode': 'observe', 'agents': [], 'scanners': False,
            'enumeration': copy.deepcopy(enumeration.SETTINGS),
            'log_rejections': False, 'mail_protection': False,
            'login': {'enabled': False, 'rate': 5, 'burst': 3},
@@ -42,7 +44,9 @@ for _field in ('ai_agents', 'search_agents', 'seo_agents'):
     DEFAULT[_field] = []
     DEFAULT[_field + '_enabled'] = True
 AGENT_KEYS = {key for field in ('ai_agents', 'search_agents', 'seo_agents') for key in (field, field + '_enabled')}
-V10_KEYS = set(DEFAULT) | {'domain_bans'}
+V12_KEYS = set(DEFAULT) - {'endpoint_404'}
+V11_KEYS = V12_KEYS - {'custom_endpoints'}
+V10_KEYS = V11_KEYS | {'domain_bans'}
 V9_KEYS = V10_KEYS - AGENT_KEYS
 LEGACY_KEYS = {'schema', 'mode', 'agents', 'scanners', 'login', 'xmlrpc', 'overrides'}
 V7_KEYS = V9_KEYS - {'log_rejections', 'mail_protection', 'enumeration'}
@@ -147,8 +151,14 @@ def validate(raw):
     if data.get('schema') == 10 and set(data) == V10_KEYS:
         data.pop('domain_bans')
         data['schema'] = 11
-    if data.get('schema') != 11 or set(data) != set(DEFAULT):
+    if data.get('schema') == 11 and set(data) == V11_KEYS:
+        data.update(schema=12, custom_endpoints=[])
+    if data.get('schema') == 12 and set(data) == V12_KEYS:
+        data.update(schema=13, endpoint_404=copy.deepcopy(endpoint_404.DEFAULT))
+    if data.get('schema') != 13 or set(data) != set(DEFAULT):
         raise ValueError('Unsupported policy format')
+    endpoints.validate(data['custom_endpoints'], target)
+    endpoint_404.validate(data['endpoint_404'], target)
     enumeration.validate(data['enumeration'], target)
     if data['mode'] not in MODES or type(data['scanners']) is not bool:
         raise ValueError('Invalid mode or private-file setting')
@@ -372,6 +382,8 @@ def global_config(policy, sites, global_blocks=None, access_settings=None, geo_p
     web_sites = [site for site in sites if site.get('kind') != 'mail']
     lines += enumeration.compiled(policy, web_sites, pattern, parameter_pattern)
     lines += probe_rules.compile_maps(policy, web_sites, pattern, exact_uri_pattern)
+    lines += endpoints.compile_maps(policy, web_sites, scope_map, exact_uri_pattern, probe_rules.event_format)
+    lines += endpoint_404.compile_maps(policy['endpoint_404'], web_sites, scope_map, exact_uri_pattern, probe_rules.event_format)
     lines += ['map "$hdn_site:$uri" $hdn_static_exempt {', '    default 0;']
     for site in sites:
         if site.get('supported', True) and not site.get('suspended'):
@@ -421,10 +433,10 @@ def global_config(policy, sites, global_blocks=None, access_settings=None, geo_p
         lines += ['    ' + pattern('(?:^|:)' + label + '(?:$|:)') + ' ' + label + ';']
     lines += ['    ' + pattern('(?:^|:)login(?:$|:)') + ' login;',
               '    ' + pattern('(?:^|:)xmlrpc(?:$|:)') + ' xmlrpc;']
-    lines += ['}', 'map "$hdn_global_blocked:$hdn_match_base" $hdn_match {',
-              '    default $hdn_match_base;', '    ~^1: global-ban;', '}',
+    lines += ['}', 'map "$hdn_global_blocked:$hdn_endpoint:$hdn_match_base" $hdn_match {',
+              '    default $hdn_match_base;', '    ~^1: global-ban;', '    ~^0:endpoint- $hdn_endpoint;', '}',
               'map $hdn_match $hdn_block {', '    default 0;', '    private-file 1;',
-              '    agent 1;', '    ~^filter-block- 1;', '}',
+              '    agent 1;', '    ~^filter-block- 1;', '    ~^endpoint- 1;', '}',
               'map "$hdn_mode:$hdn_static_candidate" $hdn_static_reject {', '    default 0;', '    ~^enforce:static- 1;', '}',
               'map $limit_req_status $hdn_limit_status { default $limit_req_status; "" "-"; }',
               # The JSON-escaped User-Agent follows the legacy fields, separated
@@ -494,6 +506,10 @@ def site_config(policy, site, document_root=None, access_settings=None):
     lines += ['access_log /var/log/webuzo-de-noise/matches.log hdn if=$hdn_log;']
     if policy['bans']['enabled']:
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_bans if=$hdn_autoban_log;']
+    if any(rule['enabled'] and rule['also_ban'] and applies(rule, site) for rule in policy['custom_endpoints']):
+        lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_endpoint_bans if=$hdn_endpoint_ban_log;']
+    if not site.get('native_access_logging') and applies(policy['endpoint_404'], site):
+        lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_endpoint404_bans if=$hdn_endpoint404_log;']
     if not site.get('native_access_logging') and (policy['bans']['enabled'] and policy['bans']['any_404']['enabled']):
         lines += ['access_log /var/log/webuzo-de-noise/ban-events.log hdn_early_404 if=$hdn_early_404_log;']
     return '\n'.join(lines) + '\n'

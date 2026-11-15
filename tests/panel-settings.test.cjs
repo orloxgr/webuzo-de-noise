@@ -68,6 +68,21 @@ function fixture(replies, {action = null, remembered = null, activity = false, i
 const queued = {ok: true, job: {id: 'one', state: 'queued'}};
 const done = {ok: true, job: {id: 'one', state: 'complete'}, report: 'HTML'};
 
+test('endpoint analysis resumes, paginates and exports without saving a policy', async () => {
+    const f=fixture([queued,done,{ok:true,job:{id:'one',state:'complete'},report:'HTML'},
+        {ok:true,export:{columns:['Site','Path'],rows:[['one.test','/bak.sql.zip']],scanned:1,total:1,next_offset:null}}
+    ],{inventory:'endpoints'});
+    await f.submit();
+    assert.equal(f.requests[0].options.body.fields.get('action'),'endpoints_start');
+    assert.equal(f.requests[0].options.body.fields.get('tab'),'endpoints');
+    await f.handlers.page({target:{closest:selector=>selector==='[data-hdn-analysis-page]' ? {dataset:{hdnAnalysisPage:'2'}}:null}});
+    assert.equal(f.requests[2].options.body.fields.get('action'),'endpoints_status');
+    await f.exportReview();
+    assert.equal(f.requests[3].options.body.fields.get('review_kind'),'endpoints');
+    assert.equal(f.downloads.length,1);
+    assert.ok(f.requests.every(r=>!['save','sync','unban'].includes(r.options.body.fields.get('action'))));
+});
+
 test('per-category append reads all chunks, merges current edits and never saves or enables rules', async () => {
     const f=fixture([queued,done,
         {ok:true,candidates:{category:'search_agents',names:['Googlebot-Image'],scanned:500,total:502,next_offset:500}},

@@ -79,7 +79,7 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                     continue
                 outcome = 'matched'
                 if limit == 'REJECTED' or (mode == 'enforce' and (
-                        status == '403' and (rule in ('agent', 'private-file', 'global-ban', 'domain-ban', 'user-enumeration', 'country-filter') or rule.startswith('filter-block-'))
+                        status == '403' and (rule in ('agent', 'private-file', 'global-ban', 'domain-ban', 'user-enumeration', 'country-filter') or rule.startswith(('filter-block-', 'endpoint-')))
                         or status == '401' and rule == 'wordpress-access'
                         or status == '404' and (rule.startswith('static-') or rule in ('missing-file', 'suspicious-query')))):
                     outcome = 'blocked'
