@@ -12,6 +12,16 @@ import activity
 
 @unittest.skipUnless(os.name == 'posix' and os.geteuid() == 0, 'Requires Linux root-owned log fixture')
 class ActivityTests(unittest.TestCase):
+    def test_xmlrpc_disable_is_reported_as_blocked_or_observed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / 'matches.log'; stamp = '2026-01-01T00:00:00+00:00'
+            log.write_text(f'{stamp} own.test xmlrpc-disabled - 403 enforce\t"Browser"\n'
+                           f'{stamp} own.test xmlrpc-disabled - 200 observe\t"Browser"\n')
+            with patch.object(activity, 'LOG', log):
+                result = activity.summary({'own.test'}, 1767225601)
+            self.assertEqual({r['outcome'] for r in result['rows']}, {'blocked', 'observed'})
+            self.assertTrue(all(r['rule'] == 'xmlrpc-disabled' for r in result['rows']))
+
     def test_native_empty_limit_fields_keep_rule_mode_agent_and_block_classification(self):
         with tempfile.TemporaryDirectory() as directory:
             log = Path(directory) / 'matches.log'; stamp = '2026-01-01T00:00:00+00:00'

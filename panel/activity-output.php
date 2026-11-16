@@ -24,7 +24,7 @@
         return '<details class="hdn-activity-agent-details"><summary title="' . $escape($agent) . '">' . $escape($label) . '</summary><div>' . $escape($agent) . '</div></details>';
     };
     $ruleHtml = static function ($rule) use ($escape, $data): string {
-        $labels = ['login' => 'WordPress login rate limit', 'xmlrpc' => 'XML-RPC rate limit',
+        $labels = ['login' => 'WordPress login rate limit', 'xmlrpc' => 'XML-RPC rate limit', 'xmlrpc-disabled' => 'XML-RPC disabled',
             'agent' => 'User-Agent rule', 'private-file' => 'Private file protection',
             'global-ban' => 'Global website IP ban', 'domain-ban' => 'Domain IP ban', 'user-enumeration' => 'User enumeration',
             'wordpress-access' => 'WordPress access gate', 'country-filter' => 'Country filter',

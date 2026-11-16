@@ -267,6 +267,19 @@ Mark reviewed, Ignore in findings and Reopen apply to one exact path on one doma
 
 ### Endpoints
 
+**Disable XML-RPC** has an enable checkbox and a checkbox for each site. Check
+the sites, then **Save & Apply**. In Enforce, Nginx rejects XML-RPC with 403 before
+WordPress runs, including aliases, subfolder installations and every HTTP method.
+Observe records matches without blocking; Off keeps normal routing. An empty
+selection affects no sites. The site list has pagination, Select all / Clear
+selection and CSV. New installations and upgrades start with this option off
+and no selected sites.
+
+Disabling XML-RPC stops Jetpack connections, external XML-RPC publishing and
+pingbacks for the checked sites. Normal wp-admin access is unchanged. This
+control does not ban IPs and is independent of the XML-RPC request rate limit.
+Activity identifies these requests as **XML-RPC disabled**.
+
 **Custom endpoint rules** match exact paths or native Nginx PCRE expressions on
 selected domains, or all web domains. Enforce returns 403 before the application,
 including when a file exists. Observe records matches; Off leaves requests alone.

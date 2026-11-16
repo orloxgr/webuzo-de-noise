@@ -138,3 +138,21 @@ The original test-environment policy, access profiles and unit files were restor
 - Tests used a private source tree in the Webuzo VM. The VM's expired panel
   license prevented a new end-to-end plugin-manager upload; the existing native
   installation and production servers were not changed.
+
+## Disable XML-RPC in 0.5.1
+
+- A separate Endpoints section provides an enable checkbox and per-site
+  checkboxes, with Select all / Clear selection, pagination and CSV.
+- Selected Enforce sites reject XML-RPC in Nginx before the origin. All HTTP
+  methods, aliases, encoded paths and subfolder installations are covered.
+  Unselected sites, wp-admin and unrelated paths retain their existing routing.
+- Observe records the match and Off allows normal routing. Empty selections
+  affect no sites. The new option starts disabled and does not create IP bans
+  or change the existing XML-RPC rate-limit controls.
+- Schema 14 and the form-presence marker preserve XML-RPC selections when
+  submitting an older open panel. Current controls can explicitly clear them.
+- Linux/root suite: 443 tests, 436 passed and 7 opt-in WordPress tests skipped,
+  including 24 real native Nginx tests. All 31 panel PHP files passed lint and
+  all 43 Node regressions passed. The rendered Edge/PHP fixture verifies site
+  checkbox selection, select-all/clear, form ownership and the existing desktop
+  and mobile layouts. No live server configuration was changed.

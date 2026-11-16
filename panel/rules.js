@@ -1,5 +1,10 @@
 (() => {
     'use strict';
+    document.querySelectorAll('[data-hdn-xmlrpc-select]').forEach(button => button.addEventListener('click', () => {
+        document.querySelectorAll('#hdn-xmlrpc-block-sites input[name="xmlrpc_block_targets[]"]').forEach(box => {
+            box.checked = button.dataset.hdnXmlrpcSelect === 'all';
+        });
+    }));
     const presets = JSON.parse(document.getElementById('hdn-rule-presets').textContent);
     const names = value => value.toLowerCase().split(/[\s,]+/).filter(Boolean).sort().join(',');
     const path = value => value.replace(/\/+$/, '') || '/';

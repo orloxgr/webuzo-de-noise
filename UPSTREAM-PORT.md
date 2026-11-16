@@ -41,3 +41,8 @@ manual append behavior in 0.20.3. Source: https://github.com/orloxgr/hestia-de-n
   points and owned configuration files are used; Webuzo core files are unchanged.
 
 Validation and its scope are recorded in [FEATURES.md](FEATURES.md).
+
+Webuzo 0.5.1 additionally introduces the independently requested per-site
+**Disable XML-RPC** control. Its schema 14 preserves the schema 13 endpoint
+settings and old-panel submissions; this addition is not attributed to the
+Hestia 0.21.0 upstream commit.

@@ -22,7 +22,7 @@ class Selections(unittest.TestCase):
     def test_webuzo_old_panels_preserve_new_list_and_attempt_controls(self):
         saved=copy.deepcopy(DEFAULT);saved['endpoint_404'].update(paths=['/probe.js'],maxretry=3,findtime=600)
         for schema in (11,12):
-            old=copy.deepcopy(DEFAULT);old.pop('endpoint_404');old['schema']=schema
+            old=copy.deepcopy(DEFAULT);old.pop('endpoint_404');old.pop('xmlrpc_block');old['schema']=schema
             if schema==11: old.pop('custom_endpoints')
             self.assertEqual(validate(old)['endpoint_404'],endpoint_404.DEFAULT)
             with patch.object(engine,'authorize',return_value=(True,'root')),patch.object(engine,'load',return_value=saved),patch.object(engine,'collect',return_value=[]),patch.object(engine,'snapshot',return_value={}),patch.object(engine,'apply') as apply:

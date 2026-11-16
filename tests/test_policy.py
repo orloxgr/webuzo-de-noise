@@ -32,7 +32,7 @@ class PolicyTests(unittest.TestCase):
         for key in ('missing_files', 'suspicious_queries', 'any_404'): old['bans'].pop(key)
         old['bans'].update(enabled=True, maxretry=1, duration_days=0)
         saved = validate(old)
-        self.assertEqual(saved['schema'], 13)
+        self.assertEqual(saved['schema'], 14)
         self.assertEqual(saved['bans']['duration_days'], 0)
         for key in ('missing_files', 'suspicious_queries'):
             self.assertFalse(saved['bans'][key]['enabled'])

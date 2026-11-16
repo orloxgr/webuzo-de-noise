@@ -62,6 +62,19 @@ class SaveParser(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertNotIn('"endpoint_404"', result.stdout)
 
+    def test_xmlrpc_site_checkboxes_parse_without_an_implicit_all_sites_scope(self):
+        for enabled, targets in ((True, ['alice/one.test']), (True, []), (False, [])):
+            post = dict(endpoint_settings_schema='13', endpoint404_duration='1', endpoint404_unit='days',
+                        endpoint404_maxretry='1', endpoint404_findtime='300', xmlrpc_block_present='1',
+                        xmlrpc_block_targets=targets)
+            if enabled:
+                post['xmlrpc_block_enabled'] = 'on'
+            result = self.parse(post)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            policy = json.loads(result.stdout)
+            self.assertEqual(policy['schema'], 14)
+            self.assertEqual(policy['xmlrpc_block'], dict(enabled=enabled, targets=targets))
+
 
 if __name__ == '__main__':
     unittest.main()

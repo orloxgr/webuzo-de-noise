@@ -651,13 +651,15 @@ def dispatch(request):
             raise ValueError('Expected policy settings')
         previous = policy
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') != 13:
+        if incoming.get('schema') != 14:
+            policy['xmlrpc_block'] = previous['xmlrpc_block']
+        if incoming.get('schema') not in (13, 14):
             policy['endpoint_404'] = previous['endpoint_404']
-        if incoming.get('schema') not in (12, 13):
+        if incoming.get('schema') not in (12, 13, 14):
             policy['custom_endpoints'] = previous['custom_endpoints']
-        if incoming.get('schema') not in (9, 10, 11, 12, 13):
+        if incoming.get('schema') not in (9, 10, 11, 12, 13, 14):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13):
+        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13, 14):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):

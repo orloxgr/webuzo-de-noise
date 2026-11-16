@@ -9,7 +9,8 @@ $fields = static function ($action) use ($escape) {
 $policy = ['custom_endpoints'=>[['id'=>'saved_rule','name'=>'Saved rule','enabled'=>true,'type'=>'regex',
     'pattern'=>'^/saved\.sql$','targets'=>[],'also_ban'=>true,'duration_seconds'=>7200]]];
 $policy['endpoint_404']=['enabled'=>false,'paths'=>['/kept.php'],'targets'=>['alice/one.test'],'duration_seconds'=>7200,'maxretry'=>3,'findtime'=>600];
-$data = ['sites'=>[['key'=>'alice/one.test','domain'=>'one.test','owner'=>'alice']],
+$policy['xmlrpc_block']=['enabled'=>true,'targets'=>['alice/one.test']];
+$data = ['sites'=>[['key'=>'alice/one.test','domain'=>'one.test','owner'=>'alice'],['key'=>'bob/two.test','domain'=>'two.test','owner'=>'bob']],
     'analysis'=>['inventory_kind'=>'endpoints','minutes'=>1440,'totals'=>['requests'=>2],'findings_total'=>1,
         'bytes_read'=>1024,'partial'=>false,'note'=>'Fixture only','page'=>1,'pages'=>1,'per_page'=>20,
         'findings'=>[['domain'=>'one.test','site'=>'alice/one.test','path'=>'/wp-config.old','candidate'=>'/wp-config.old',

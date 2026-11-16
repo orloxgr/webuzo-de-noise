@@ -143,6 +143,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $submitted['schema'] = 11;
             }
+            if (($_POST['xmlrpc_block_present'] ?? '') === '1') {
+                $submitted['schema'] = 14;
+                $submitted['xmlrpc_block'] = ['enabled' => isset($_POST['xmlrpc_block_enabled']),
+                    'targets' => $_POST['xmlrpc_block_targets'] ?? []];
+            }
             $request['policy'] = $submitted;
             if (is_array($submitted['static_exceptions'])) $request['policy']['static_exceptions'] = (object)$submitted['static_exceptions'];
             foreach (['files', 'queries'] as $kind) {

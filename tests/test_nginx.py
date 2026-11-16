@@ -48,6 +48,7 @@ class NativeNginxTests(unittest.TestCase):
             probe.bind(('127.0.0.1', 0)); cls.port = probe.getsockname()[1]
         policy = copy.deepcopy(DEFAULT)
         policy['mode'] = 'enforce'
+        policy['xmlrpc_block'] = dict(enabled=True, targets=['alice/xmlrpc-deny.test', 'alice/xmlrpc-observe.test', 'alice/xmlrpc-off.test'])
         policy['endpoint_404'] = dict(enabled=True,paths=['/selected-missing.js','/existing.js','/local404.js'],
             targets=['alice/enforce.test','alice/observe.test','alice/off.test'],duration_seconds=120,maxretry=1,findtime=300)
         policy['custom_endpoints'] = [
@@ -73,7 +74,7 @@ class NativeNginxTests(unittest.TestCase):
                                      'queries': {'alice/enforce.test': ['/wp-admin/file-manager.php']}}
         policy['login'] = {'enabled': True, 'rate': 1, 'burst': 1}
         policy['xmlrpc'] = {'enabled': True, 'rate': 10, 'burst': 3}
-        policy['overrides'] = {'alice/observe.test': 'observe', 'alice/off.test': 'off'}
+        policy['overrides'] = {'alice/observe.test': 'observe', 'alice/off.test': 'off', 'alice/xmlrpc-observe.test': 'observe', 'alice/xmlrpc-off.test': 'off'}
         policy['filters'] = [
             {'id': 'facets', 'enabled': True, 'path': '/shop/', 'targets': [],
              'parameters': ['min_price', 'orderby'], 'agents': ['Applebot', 'Amazonbot'],
@@ -93,7 +94,7 @@ class NativeNginxTests(unittest.TestCase):
         (cls.directory / 'wp-content').mkdir()
         (cls.directory / 'wp-content/existing.map').write_text('existing')
         (cls.directory / 'existing.php').write_text('existing')
-        sites = [{'key': 'alice/' + host} for host in ('enforce.test', 'other.test', 'observe.test', 'off.test')]
+        sites = [{'key': 'alice/' + host} for host in ('enforce.test', 'other.test', 'observe.test', 'off.test', 'xmlrpc-deny.test', 'xmlrpc-observe.test', 'xmlrpc-off.test')]
         text = 'worker_processes 1;\npid logs/nginx.pid;\nerror_log logs/error.log notice;\nevents { worker_connections 64; }\nhttp {\n'
         text += global_config(policy, sites)
         for site in sites:
@@ -138,6 +139,21 @@ class NativeNginxTests(unittest.TestCase):
         response = connection.getresponse()
         status = response.status; response.read(); connection.close()
         return status
+
+    def test_selected_xmlrpc_disable_rejects_before_origin_and_retains_other_routes(self):
+        before = Origin.hits
+        for host in ('xmlrpc-deny.test', 'www.xmlrpc-deny.test'):
+            for method in ('GET', 'POST', 'HEAD', 'OPTIONS'):
+                for path in ('/xmlrpc.php', '/xmlrpc.php?ignored=1', '/shop/xmlrpc.php', '/shop/xmlrpc.php/path-info', '/%78mlrpc.php'):
+                    self.assertEqual(self.request(path, host=host, method=method), 403)
+        self.assertEqual(Origin.hits, before)
+        for host in ('other.test', 'xmlrpc-observe.test', 'xmlrpc-off.test'):
+            self.assertEqual(self.request('/xmlrpc.php', host=host, method='POST'), 200)
+        for path in ('/', '/wp-login.php', '/wp-admin/', '/xmlrpc.php.txt', '/xmlrpc.php-backup'):
+            self.assertEqual(self.request(path, host='xmlrpc-deny.test'), 200)
+        log = (self.directory / 'matches.log').read_text()
+        self.assertIn('xmlrpc-deny.test xmlrpc-disabled', log)
+        self.assertIn('xmlrpc-observe.test xmlrpc-disabled', log)
 
     def test_custom_endpoints_native_pcre_exact_scope_modes_and_event_privacy(self):
         before = Origin.hits

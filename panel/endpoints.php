@@ -30,6 +30,7 @@ $renderEndpoint = static function ($index, array $row) use ($data, $escape): voi
 </div>
 <?php }; ?>
 <input form="hdn-settings" type="hidden" name="endpoint_settings_schema" value="13">
+<?php require __DIR__ . '/xmlrpc-block.php'; ?>
 <?php require __DIR__ . '/endpoint-404.php'; ?>
 <details class="box-collapse hdn-endpoint-section u-mb20" id="hdn-custom-endpoints-box">
 <summary class="box-collapse-header">Custom endpoint rules</summary>
