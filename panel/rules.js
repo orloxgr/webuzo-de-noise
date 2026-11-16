@@ -1,5 +1,48 @@
 (() => {
     'use strict';
+    document.querySelectorAll('[data-hdn-allow-jetpack]').forEach(button => button.addEventListener('click', async () => {
+        const cell = button.closest('.hdn-xmlrpc-exceptions');
+        const field = cell.querySelector('textarea');
+        const status = cell.querySelector('[data-hdn-jetpack-status]');
+        const form = document.getElementById('hdn-settings');
+        button.disabled = true;
+        status.textContent = 'Loading official Jetpack IPsβ€¦';
+        try {
+            const body = new FormData();
+            body.set('action', 'xmlrpc_jetpack_ips');
+            body.set('token', form.querySelector('[name="token"]').value);
+            const response = await fetch(form.getAttribute('action') || location.href, {
+                method: 'POST', body, credentials: 'same-origin', headers: {'X-HDN-Analysis': '1'}
+            });
+            let result;
+            try { result = await response.json(); } catch (_) {
+                throw new Error('Could not read the Jetpack IP list. Check your Webuzo session and retry.');
+            }
+            if (!response.ok || !result.ok) throw new Error(result.error || `Jetpack lookup failed (HTTP ${response.status}).`);
+            if (!Array.isArray(result.ips) || !result.ips.length || !result.ips.every(value =>
+                typeof value === 'string' && /^\d{1,3}(?:\.\d{1,3}){3}\/(?:[0-9]|[12][0-9]|3[0-2])$/.test(value) &&
+                value.split('/')[0].split('.').every(part => Number(part) <= 255))) {
+                throw new Error('The Jetpack IP list was invalid. Your exceptions were kept.');
+            }
+            const key = value => value.replace(/\/32$/, '');
+            const existing = new Set(field.value.split(/\r\n|\r|\n/).map(value => key(value.trim())));
+            const added = result.ips.filter(value => {
+                if (existing.has(key(value))) return false;
+                existing.add(key(value)); return true;
+            });
+            // Read live edits after the request completes; never replace a user's list.
+            if (added.length) {
+                field.value += (field.value && !/[\r\n]$/.test(field.value) ? '\n' : '') + added.join('\n');
+                field.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+            cell.querySelector('details').open = true;
+            status.textContent = added.length ? 'Jetpack IPs added. Save & Apply to allow them.' : 'Jetpack IPs are already listed. Save & Apply if you have unsaved changes.';
+        } catch (error) {
+            status.textContent = error.message;
+        } finally {
+            button.disabled = false;
+        }
+    }));
     document.querySelectorAll('[data-hdn-xmlrpc-select]').forEach(button => button.addEventListener('click', () => {
         document.querySelectorAll('#hdn-xmlrpc-block-sites input[name="xmlrpc_block_targets[]"]').forEach(box => {
             box.checked = button.dataset.hdnXmlrpcSelect === 'all';

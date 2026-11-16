@@ -156,3 +156,25 @@ The original test-environment policy, access profiles and unit files were restor
   all 43 Node regressions passed. The rendered Edge/PHP fixture verifies site
   checkbox selection, select-all/clear, form ownership and the existing desktop
   and mobile layouts. No live server configuration was changed.
+
+## Global XML-RPC and exceptions in 0.5.2
+
+- Ported Hestia 0.23.0–0.23.1 IP exceptions and on-demand Jetpack lookup.
+- Global and each site have their own checkbox, IP/CIDR editor and Allow Jetpack
+  action. Global covers current and newly discovered sites, including separate
+  alias virtual hosts. Per-site exceptions add to active global exceptions.
+- Exceptions bypass only the XML-RPC block. Existing website bans, other rules
+  and XML-RPC POST rate limits remain effective. Source checks use `$remote_addr`.
+- The administrator-only lookup uses native Webuzo authentication/CSRF and a
+  fixed HTTPS source. It holds no protection lock and performs no policy mutation.
+  The browser merges into live edits, without saving, enabling or replacing lists.
+- Schema 15 preserves existing selections and old-panel submissions. CSV reads
+  current editor values across every page, including unavailable saved sites.
+- Validation: 466 Linux/root tests ran, 459 passed and 7 opt-in WordPress tests
+  skipped. All 31 panel PHP files passed lint; all 43 Node regressions passed.
+  Native Nginx covers global/per-site IPv4/IPv6, new sites, aliases, spoofed
+  headers, ban precedence, Observe/Off and rate limits. The rendered Edge/PHP
+  fixture passed Global/per-site Jetpack append, concurrent edits, error handling,
+  CSRF form ownership, paginated fields, full CSV and desktop/mobile checks.
+  The actual official Jetpack download returned 8 valid networks in the lab.
+  Tests used an isolated source tree; no production server was changed.

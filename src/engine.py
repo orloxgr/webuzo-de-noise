@@ -29,6 +29,7 @@ import analysis_jobs
 import access_protection
 import captcha_runtime
 import country_database
+import xmlrpc_block
 
 REVIEW_ACTIONS = ('review_mark', 'review_export', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_export', 'agents_candidates', 'fail2ban_install_status') + tuple(kind + '_' + action for kind in ('agents', 'php_files', 'endpoints') for action in ('start', 'status', 'cancel'))
 
@@ -425,6 +426,13 @@ def authorize(request):
 def dispatch(request):
     if not isinstance(request, dict):
         raise ValueError('Expected a JSON object')
+    if request.get('action') == 'xmlrpc_jetpack_ips':
+        admin, owner = authorize(request)
+        if not admin or owner != request['actor']:
+            raise PermissionError('Jetpack IP lookup requires the administrator context')
+        if set(request) - {'actor', 'owner', 'action', 'listing'}:
+            raise ValueError('Only the official Jetpack IP list can be requested')
+        return {'ok': True, 'ips': xmlrpc_block.jetpack_ips(), 'source': xmlrpc_block.JETPACK_URL}
     if isinstance(request.get('action'), str) and request['action'].startswith('fail2ban_'):
         admin, owner = authorize(request)
         if not admin or owner != request['actor']:
@@ -651,15 +659,18 @@ def dispatch(request):
             raise ValueError('Expected policy settings')
         previous = policy
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') != 14:
+        if incoming.get('schema') not in (14, 15):
             policy['xmlrpc_block'] = previous['xmlrpc_block']
-        if incoming.get('schema') not in (13, 14):
+        elif incoming.get('schema') == 14:
+            for key in ('exceptions', 'global', 'global_exceptions'):
+                policy['xmlrpc_block'][key] = previous['xmlrpc_block'][key]
+        if incoming.get('schema') not in (13, 14, 15):
             policy['endpoint_404'] = previous['endpoint_404']
-        if incoming.get('schema') not in (12, 13, 14):
+        if incoming.get('schema') not in (12, 13, 14, 15):
             policy['custom_endpoints'] = previous['custom_endpoints']
-        if incoming.get('schema') not in (9, 10, 11, 12, 13, 14):
+        if incoming.get('schema') not in (9, 10, 11, 12, 13, 14, 15):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13, 14):
+        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13, 14, 15):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):
@@ -723,9 +734,9 @@ def main():
             if len(raw) > 1024 * 1024:
                 raise ValueError('Request exceeds the safe transport size')
             request = json.loads(raw)
-        # An explicit read-only review has its own queued scan lock. It
-        # must not hold the protection/recovery lock or run mutation recovery.
-        if isinstance(request, dict) and request.get('action') in REVIEW_ACTIONS:
+        # Reviews have their own queued scan lock; the IP lookup only reads.
+        # Neither should hold the protection lock or run mutation recovery.
+        if isinstance(request, dict) and request.get('action') in REVIEW_ACTIONS + ('xmlrpc_jetpack_ips',):
             if load('active.json', {}).get('active') is not True:
                 raise RuntimeError('De-Noise is not active')
             return dispatch(request)

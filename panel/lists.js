@@ -44,7 +44,10 @@
             if (!table) return [(row.querySelector(':scope > summary') || row).textContent.trim()];
             const cells = [...row.cells];
             const headings = [...list.tHead.rows[0].cells];
-            return cells.filter((_, i) => headings[i]?.textContent.trim() !== 'Select').map(cell => cell.textContent.trim());
+            return cells.filter((_, i) => headings[i]?.textContent.trim() !== 'Select').map(cell => {
+                const field = cell.querySelector('[data-hdn-csv-value]');
+                return field ? field.value : cell.textContent.trim();
+            });
         };
         const controls = document.createElement('nav');
         controls.className = 'hdn-list-controls u-mb10 u-mt10';

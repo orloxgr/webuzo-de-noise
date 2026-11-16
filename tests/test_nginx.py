@@ -48,7 +48,8 @@ class NativeNginxTests(unittest.TestCase):
             probe.bind(('127.0.0.1', 0)); cls.port = probe.getsockname()[1]
         policy = copy.deepcopy(DEFAULT)
         policy['mode'] = 'enforce'
-        policy['xmlrpc_block'] = dict(enabled=True, targets=['alice/xmlrpc-deny.test', 'alice/xmlrpc-observe.test', 'alice/xmlrpc-off.test'])
+        policy['xmlrpc_block'].update(enabled=True, targets=['alice/xmlrpc-deny.test', 'alice/xmlrpc-observe.test', 'alice/xmlrpc-off.test', 'alice/xmlrpc-allow.test'])
+        policy['xmlrpc_block']['exceptions'] = {'alice/xmlrpc-allow.test': ['127.0.0.2', '127.0.0.4/30', '::1']}
         policy['endpoint_404'] = dict(enabled=True,paths=['/selected-missing.js','/existing.js','/local404.js'],
             targets=['alice/enforce.test','alice/observe.test','alice/off.test'],duration_seconds=120,maxretry=1,findtime=300)
         policy['custom_endpoints'] = [
@@ -94,12 +95,21 @@ class NativeNginxTests(unittest.TestCase):
         (cls.directory / 'wp-content').mkdir()
         (cls.directory / 'wp-content/existing.map').write_text('existing')
         (cls.directory / 'existing.php').write_text('existing')
-        sites = [{'key': 'alice/' + host} for host in ('enforce.test', 'other.test', 'observe.test', 'off.test', 'xmlrpc-deny.test', 'xmlrpc-observe.test', 'xmlrpc-off.test')]
+        sites = [{'key': 'alice/' + host} for host in ('enforce.test', 'other.test', 'observe.test', 'off.test', 'xmlrpc-deny.test', 'xmlrpc-observe.test', 'xmlrpc-off.test', 'xmlrpc-allow.test')]
+        cls.ipv6 = socket.has_ipv6
+        if cls.ipv6:
+            try:
+                with socket.socket(socket.AF_INET6) as probe:
+                    probe.bind(('::1', cls.port))
+            except OSError:
+                cls.ipv6 = False
         text = 'worker_processes 1;\npid logs/nginx.pid;\nerror_log logs/error.log notice;\nevents { worker_connections 64; }\nhttp {\n'
-        text += global_config(policy, sites)
+        text += global_config(policy, sites, ['127.0.0.6'])
         for site in sites:
             host = site['key'].split('/')[1]
             text += 'server { listen 127.0.0.1:' + str(cls.port) + '; server_name ' + host + ' www.' + host + ';\n'
+            if cls.ipv6:
+                text += 'listen [::1]:' + str(cls.port) + ';\n'
             text += site_config(policy, site, cls.directory.as_posix()).replace('/var/log/webuzo-de-noise/matches.log',
                                                      (cls.directory / 'matches.log').as_posix()).replace('/var/log/webuzo-de-noise/ban-events.log', (cls.directory / 'ban-events.log').as_posix())
             text += 'location = /local404.js { return 404; }\nlocation / { proxy_pass http://127.0.0.1:' + str(cls.origin_port) + '; }\n}\n'
@@ -132,10 +142,10 @@ class NativeNginxTests(unittest.TestCase):
         cls.origin.shutdown(); cls.origin.server_close(); cls.thread.join(timeout=2)
         cls.temp.cleanup()
 
-    def request(self, path='/', agent='Mozilla/5.0', host='enforce.test', method='GET', source=None):
-        connection = http.client.HTTPConnection('127.0.0.1', self.port, timeout=3,
+    def request(self, path='/', agent='Mozilla/5.0', host='enforce.test', method='GET', source=None, headers=None, ipv6=False):
+        connection = http.client.HTTPConnection('::1' if ipv6 else '127.0.0.1', self.port, timeout=3,
                                                 source_address=(source, 0) if source else None)
-        connection.request(method, path, headers={'Host': host, 'User-Agent': agent})
+        connection.request(method, path, headers={'Host': host, 'User-Agent': agent, **(headers or {})})
         response = connection.getresponse()
         status = response.status; response.read(); connection.close()
         return status
@@ -154,6 +164,37 @@ class NativeNginxTests(unittest.TestCase):
         log = (self.directory / 'matches.log').read_text()
         self.assertIn('xmlrpc-deny.test xmlrpc-disabled', log)
         self.assertIn('xmlrpc-observe.test xmlrpc-disabled', log)
+
+    def test_xmlrpc_ip_exceptions_reach_origin_only_on_selected_site_and_keep_other_rules(self):
+        before = Origin.hits
+        for host in ('xmlrpc-allow.test', 'www.xmlrpc-allow.test'):
+            for source in ('127.0.0.2', '127.0.0.5'):
+                for path in ('/xmlrpc.php', '/shop/xmlrpc.php/path-info', '/%78mlrpc.php'):
+                    self.assertEqual(self.request(path,host=host,source=source),200,(host,source,path))
+        self.assertEqual(Origin.hits, before+12)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',source='127.0.0.2',method='POST'),200)
+        before = Origin.hits
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',source='127.0.0.3'),403)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-deny.test',source='127.0.0.2'),403)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',source='127.0.0.3',
+                                      headers={'X-Forwarded-For':'127.0.0.2','X-Real-IP':'127.0.0.2'},agent='Jetpack'),403)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',source='127.0.0.2',agent='Crawler'),403)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',source='127.0.0.6'),403)
+        self.assertEqual(Origin.hits,before)
+        self.assertEqual(self.request('/',host='xmlrpc-allow.test',source='127.0.0.3'),200)
+
+    def test_xmlrpc_ipv6_exception_is_site_scoped(self):
+        if not self.ipv6:
+            self.skipTest('IPv6 loopback unavailable')
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-allow.test',ipv6=True),200)
+        self.assertEqual(self.request('/xmlrpc.php',host='xmlrpc-deny.test',ipv6=True),403)
+
+    def test_xmlrpc_allowed_source_keeps_xmlrpc_post_rate_limit(self):
+        statuses = [self.request('/xmlrpc.php', host='xmlrpc-allow.test', source='127.0.0.7', method='POST')
+                    for _ in range(8)]
+        self.assertIn(200, statuses)
+        self.assertIn(429, statuses)
+        self.assertNotIn(403, statuses)
 
     def test_custom_endpoints_native_pcre_exact_scope_modes_and_event_privacy(self):
         before = Origin.hits

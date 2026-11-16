@@ -147,6 +147,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $submitted['schema'] = 14;
                 $submitted['xmlrpc_block'] = ['enabled' => isset($_POST['xmlrpc_block_enabled']),
                     'targets' => $_POST['xmlrpc_block_targets'] ?? []];
+                if (($_POST['xmlrpc_exceptions_present'] ?? '') === '1') {
+                    $submitted['schema'] = 15;
+                    $exceptions = $_POST['xmlrpc_block_exceptions'] ?? [];
+                    if (!is_array($exceptions)) throw new RuntimeException('Invalid XML-RPC IP exceptions');
+                    $addresses = [];
+                    foreach ($exceptions as $site => $text) {
+                        if (!is_string($text)) throw new RuntimeException('Invalid XML-RPC IP exception list');
+                        $values = $list($text, true);
+                        if ($values) $addresses[$site] = $values;
+                    }
+                    $submitted['xmlrpc_block']['exceptions'] = (object)$addresses;
+                    $globalText = $_POST['xmlrpc_block_global_exceptions'] ?? '';
+                    if (!is_string($globalText)) throw new RuntimeException('Invalid global XML-RPC IP exceptions');
+                    $submitted['xmlrpc_block']['global'] = isset($_POST['xmlrpc_block_global']);
+                    $submitted['xmlrpc_block']['global_exceptions'] = $list($globalText, true);
+                }
             }
             $request['policy'] = $submitted;
             if (is_array($submitted['static_exceptions'])) $request['policy']['static_exceptions'] = (object)$submitted['static_exceptions'];
@@ -247,10 +263,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $request['filters'] = is_string($_POST['review_filters']) ? json_decode($_POST['review_filters'], true) : false;
             if (!is_array($request['filters'])) $request['filters'] = false;
         }
-        if (!in_array($request['action'], ['review_mark', 'review_export', 'access_save', 'access_account_save', 'access_defaults_save', 'geoip_update', 'geoip_save', 'fail2ban_status', 'fail2ban_start', 'fail2ban_save', 'fail2ban_test', 'fail2ban_unban', 'fail2ban_install_preview', 'fail2ban_install_start', 'fail2ban_install_status', 'save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'agents_candidates', 'php_files_start', 'php_files_status', 'php_files_cancel', 'endpoints_start', 'endpoints_status', 'endpoints_cancel'], true)) {
+        if (!in_array($request['action'], ['xmlrpc_jetpack_ips', 'review_mark', 'review_export', 'access_save', 'access_account_save', 'access_defaults_save', 'geoip_update', 'geoip_save', 'fail2ban_status', 'fail2ban_start', 'fail2ban_save', 'fail2ban_test', 'fail2ban_unban', 'fail2ban_install_preview', 'fail2ban_install_start', 'fail2ban_install_status', 'save', 'bulk', 'disable', 'sync', 'unban', 'cron_preview', 'cron_apply', 'wordpress_status', 'wordpress_save', 'wordpress_unban', 'history_clear', 'history_settings_save', 'log_scan', 'log_scan_start', 'log_scan_status', 'log_scan_cancel', 'activity_start', 'activity_status', 'activity_cancel', 'agents_start', 'agents_status', 'agents_cancel', 'agents_export', 'agents_candidates', 'php_files_start', 'php_files_status', 'php_files_cancel', 'endpoints_start', 'endpoints_status', 'endpoints_cancel'], true)) {
             $error = 'Unsupported operation.';
         } else {
-            $isReview = in_array($request['action'], ['review_export','review_mark'], true) || strpos($request['action'], 'fail2ban_') === 0 || strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0 || strpos($request['action'], 'endpoints_') === 0;
+            $isReview = in_array($request['action'], ['xmlrpc_jetpack_ips','review_export','review_mark'], true) || strpos($request['action'], 'fail2ban_') === 0 || strpos($request['action'], 'log_scan_') === 0 || strpos($request['action'], 'activity_') === 0 || strpos($request['action'], 'agents_') === 0 || strpos($request['action'], 'php_files_') === 0 || strpos($request['action'], 'endpoints_') === 0;
             $result = $bridge($request);
             if ($isReview && ($_SERVER['HTTP_X_HDN_ANALYSIS'] ?? '') === '1') {
                 if (!empty($result['job']['analysis'])) {

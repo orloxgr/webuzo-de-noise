@@ -46,3 +46,20 @@ Webuzo 0.5.1 additionally introduces the independently requested per-site
 **Disable XML-RPC** control. Its schema 14 preserves the schema 13 endpoint
 settings and old-panel submissions; this addition is not attributed to the
 Hestia 0.21.0 upstream commit.
+
+## Webuzo 0.5.2
+
+Compared the subsequent upstream changes through
+`a0542c3c360a5e22d180e0f3565d199520d94343` (Hestia 0.23.1).
+Hestia 0.22.0 contains the per-site XML-RPC block already present in Webuzo 0.5.1.
+Ported 0.23.0's per-site IPv4/IPv6/CIDR exceptions and 0.23.1's on-demand
+**Allow Jetpack** action. Nginx maps use Webuzo's canonical `$hdn_site` identity,
+including aliases hosted in separate native virtual hosts, and its existing
+authenticated panel/CSRF/wexec transport. Native website bans remain in force.
+
+Additionally, the requested **Global** row has its own scope checkbox, IP/CIDR
+editor and **Allow Jetpack** button. It covers newly discovered sites without
+adding their names to the saved selection. Global exceptions and each site's
+additional exceptions affect only XML-RPC blocking. Schema 15 preserves existing
+site selections and settings; older open panels retain the global and exception
+fields they did not render. Hestia's delegated domain-ban feature remains absent.

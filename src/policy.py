@@ -13,7 +13,7 @@ import xmlrpc_block
 import access_protection
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.5.1'
+VERSION = '0.5.2'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
@@ -23,7 +23,7 @@ CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
 SEARCH_AGENTS = agent_catalog.SEARCH
 PRESET_AGENTS = SCANNER_AGENTS + CRAWLER_AGENTS[:3]
 FILTER_AGENTS = ['Applebot', 'Amazonbot', 'Reflectionbot', 'Googlebot', 'bingbot']
-DEFAULT = {'schema': 14, 'xmlrpc_block': copy.deepcopy(xmlrpc_block.DEFAULT), 'custom_endpoints': [], 'endpoint_404': copy.deepcopy(endpoint_404.DEFAULT), 'mode': 'observe', 'agents': [], 'scanners': False,
+DEFAULT = {'schema': 15, 'xmlrpc_block': copy.deepcopy(xmlrpc_block.DEFAULT), 'custom_endpoints': [], 'endpoint_404': copy.deepcopy(endpoint_404.DEFAULT), 'mode': 'observe', 'agents': [], 'scanners': False,
            'enumeration': copy.deepcopy(enumeration.SETTINGS),
            'log_rejections': False, 'mail_protection': False,
            'login': {'enabled': False, 'rate': 5, 'burst': 3},
@@ -158,8 +158,14 @@ def validate(raw):
     if data.get('schema') == 12 and set(data) == V12_KEYS:
         data.update(schema=13, endpoint_404=copy.deepcopy(endpoint_404.DEFAULT))
     if data.get('schema') == 13 and set(data) == V13_KEYS:
-        data.update(schema=14, xmlrpc_block=copy.deepcopy(xmlrpc_block.DEFAULT))
-    if data.get('schema') != 14 or set(data) != set(DEFAULT):
+        data.update(schema=14, xmlrpc_block={'enabled': False, 'targets': []})
+    if data.get('schema') == 14 and set(data) == set(DEFAULT):
+        block = data['xmlrpc_block']
+        if isinstance(block, dict) and set(block) == {'enabled', 'targets'}:
+            block.update(exceptions={}, global_exceptions=[])
+            block['global'] = False
+            data['schema'] = 15
+    if data.get('schema') != 15 or set(data) != set(DEFAULT):
         raise ValueError('Unsupported policy format')
     xmlrpc_block.validate(data['xmlrpc_block'], target)
     endpoints.validate(data['custom_endpoints'], target)

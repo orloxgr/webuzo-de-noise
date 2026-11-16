@@ -49,7 +49,7 @@ class EndpointPolicy(unittest.TestCase):
         old = copy.deepcopy(DEFAULT); old.pop('custom_endpoints'); old.pop('endpoint_404'); old.pop('xmlrpc_block'); old['schema'] = 11
         old['mode'] = 'enforce'; old['bans']['ignore_ips'] = ['198.51.100.2']
         current = validate(old)
-        self.assertEqual(current['schema'], 14)
+        self.assertEqual(current['schema'], 15)
         self.assertEqual(current['custom_endpoints'], [])
         self.assertEqual(current['bans']['ignore_ips'], ['198.51.100.2/32'])
         self.assertEqual(current['mode'], 'enforce')

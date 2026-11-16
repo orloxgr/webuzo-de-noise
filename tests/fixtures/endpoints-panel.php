@@ -9,7 +9,7 @@ $fields = static function ($action) use ($escape) {
 $policy = ['custom_endpoints'=>[['id'=>'saved_rule','name'=>'Saved rule','enabled'=>true,'type'=>'regex',
     'pattern'=>'^/saved\.sql$','targets'=>[],'also_ban'=>true,'duration_seconds'=>7200]]];
 $policy['endpoint_404']=['enabled'=>false,'paths'=>['/kept.php'],'targets'=>['alice/one.test'],'duration_seconds'=>7200,'maxretry'=>3,'findtime'=>600];
-$policy['xmlrpc_block']=['enabled'=>true,'targets'=>['alice/one.test']];
+$policy['xmlrpc_block']=['enabled'=>true,'targets'=>['alice/one.test'],'exceptions'=>['alice/one.test'=>['192.0.2.10/32','2001:db8::/32']]];
 $data = ['sites'=>[['key'=>'alice/one.test','domain'=>'one.test','owner'=>'alice'],['key'=>'bob/two.test','domain'=>'two.test','owner'=>'bob']],
     'analysis'=>['inventory_kind'=>'endpoints','minutes'=>1440,'totals'=>['requests'=>2],'findings_total'=>1,
         'bytes_read'=>1024,'partial'=>false,'note'=>'Fixture only','page'=>1,'pages'=>1,'per_page'=>20,
@@ -17,6 +17,8 @@ $data = ['sites'=>[['key'=>'alice/one.test','domain'=>'one.test','owner'=>'alice
             'count'=>2,'successful'=>0,'missing'=>2,'eligible_404'=>true,'eligible_block'=>true,'can_append'=>true,'can_append_404'=>true,'category'=>'Backup / database filename','advice'=>'Review first',
             'statuses'=>['404'=>2],'methods'=>['GET'=>2],'clients'=>1,'first'=>1000,'last'=>1001,
             'agents'=>['Scanner <script>bad()</script>'=>2]]]]];
+for ($i=0;$i<23;$i++) $data['sites'][]=['key'=>'alice/extra'.$i.'.test','domain'=>'extra'.$i.'.test','owner'=>'alice'];
+$policy['xmlrpc_block']['exceptions']['ghost/retired.test']=['203.0.113.55/32'];
 $data['analysis']['suggestions']=[['site'=>'alice/one.test','domain'=>'one.test','category'=>'Backup archives','action'=>'block',
     'title'=>'Proposed filename rule','detail'=>'Exactly the observed filenames','paths'=>['/wp-config.old','/wp-config.bak'],
     'missing_paths'=>['/wp-config.old','/wp-config.bak'],'block_paths'=>['/wp-config.old','/wp-config.bak'],'count'=>3,'statuses'=>['404'=>3],

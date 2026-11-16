@@ -12,6 +12,7 @@ to Webuzo.
   indexers, SEO/backlink crawlers and other data collection.
 - Private-file protection, login/XML-RPC limits, filtered-URL budgets and
   missing-static-file rules.
+- Global or per-site XML-RPC blocking, IP/CIDR exceptions and Allow Jetpack.
 - Custom exact-path or native PCRE endpoint rules, with optional website IP bans.
 - Selected-path bans after a configurable number of real final HTTP 404s.
 - Endpoint log analysis with grouped advice, individual path selection and CSV.
@@ -267,18 +268,33 @@ Mark reviewed, Ignore in findings and Reopen apply to one exact path on one doma
 
 ### Endpoints
 
-**Disable XML-RPC** has an enable checkbox and a checkbox for each site. Check
-the sites, then **Save & Apply**. In Enforce, Nginx rejects XML-RPC with 403 before
+**Disable XML-RPC** has an enable switch, a **Global** checkbox and a checkbox
+for each site. Global covers every current and future site; individual selections
+cover only those sites. Choose the scope, then **Save & Apply**. In Enforce,
+Nginx rejects XML-RPC with 403 before
 WordPress runs, including aliases, subfolder installations and every HTTP method.
-Observe records matches without blocking; Off keeps normal routing. An empty
-selection affects no sites. The site list has pagination, Select all / Clear
-selection and CSV. New installations and upgrades start with this option off
-and no selected sites.
+Observe records matches without blocking; Off keeps normal routing. With Global
+off, an empty site selection affects no sites. The list has pagination, Select all / Clear
+selection and CSV. New installations start with this option off and no selected
+sites. Upgrades retain the existing switch and site selections.
 
-Disabling XML-RPC stops Jetpack connections, external XML-RPC publishing and
-pingbacks for the checked sites. Normal wp-admin access is unchanged. This
-control does not ban IPs and is independent of the XML-RPC request rate limit.
-Activity identifies these requests as **XML-RPC disabled**.
+Global and each site have their own **Allowed IPs / CIDRs** and **Allow Jetpack**
+button. Enter IPv4/IPv6 addresses or CIDRs, one per line. When Global is checked,
+its exceptions apply across protected sites; a site's exceptions add access only
+on that site and its aliases. Other De-Noise rules,
+website bans and the XML-RPC request rate limit still apply. Behind a proxy,
+Nginx must already obtain the real client address from that trusted proxy;
+declared User-Agent names and arbitrary forwarded headers do not grant access.
+
+**Allow Jetpack** downloads the current [official Jetpack IP list](https://jetpack.com/ips-v4.txt)
+and appends missing ranges to that box's unsaved exceptions. It retains manual
+entries and edits made during the download, does not change any switch or site
+selection, and requires **Save & Apply**. Click it again to add newly published
+ranges; updates are on demand and obsolete entries can be removed manually.
+See [Jetpack's allowlist instructions](https://jetpack.com/support/how-to-add-jetpack-ips-allowlist/).
+
+Normal wp-admin access is unchanged. This control does not ban IPs. Activity
+identifies rejected requests as **XML-RPC disabled**.
 
 **Custom endpoint rules** match exact paths or native Nginx PCRE expressions on
 selected domains, or all web domains. Enforce returns 403 before the application,
