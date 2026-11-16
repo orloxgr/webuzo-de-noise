@@ -13,7 +13,7 @@ import xmlrpc_block
 import access_protection
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.5.3'
+VERSION = '0.5.4'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',

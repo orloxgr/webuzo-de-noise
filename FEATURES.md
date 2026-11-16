@@ -28,7 +28,7 @@ covers native Nginx, WordPress, Fail2ban, panel access, rollback and browser beh
 | Selected/all unban | Owning scope only | Native global all-unban and WordPress selected unban; large-selection unit tests |
 | Service authentication bans | Opt-in SSH, Dovecot, Exim and PureFTPd jails; discovered ports and logs | Native Dovecot/Exim authentication samples and applied mail jails; IPv4/IPv6 ban/unban, separate port sets, existing SSH preservation and exact configuration restoration. PureFTPd native filter fixture; FTP service was not installed in the test environment |
 | CSF/LFD coexistence checks | Detect installed CSF/LFD before enabling De-Noise SSH, mail or FTP jails | Panel controls and backend reject activation, including CSF appearing after page load. Disabling owned service jails remains possible, WordPress protection stays available, and existing CSF/LFD settings and other jails are preserved |
-| CSF/LFD package and startup guards | Block automatic installation; inspect configured jails before starting an existing daemon | Preview, start and background-worker rechecks prevent package autostart with CSF/LFD. Only empty or De-Noise WordPress-only configurations may start; malformed dumps fail closed and existing jails/configuration remain unchanged |
+| CSF/LFD package and startup guards | Allow WordPress Fail2ban installation while other authentication protection stays with CSF/LFD | A package-installation mask prevents early startup; new default jails stay off in an owned override. Native configuration validation precedes removal of the mask. Existing configuration and administrator masks/units are preserved, with resumable installation recovery |
 | Fail2ban installation | Previewed, authenticated Debian/Ubuntu package-manager installation | Native browser preview/install/progress completion on Ubuntu 24.04; original SSH jail restored and 182 original Fail2ban/SSH/mail configuration files byte-identical. Repository, plan, dependency, ownership and failure tests |
 | General and account layout | Domains follow the first Save & Apply; additional domain-ban feature removed | Native panel and PHP rendering tests: separate forms, admin-only Fail2ban actions, accounts retain only their own Domains and Activity; obsolete domain-ban state removed without changing global bans |
 | WordPress failed-login bans and escalation | Namespaced native Fail2ban jail; requires WordPress syslog events | Real WordPress HTTP logins: three native ban stages, exact permanent sentinel, automatic expiry, web-port blocking, SSH accessibility and unban; requires working logging and client-IP setup |
@@ -198,3 +198,26 @@ The original test-environment policy, access profiles and unit files were restor
   and no automatic save or network request. Tests used isolated sources in the
   Webuzo VM; no production configuration was changed. Native plugin-manager
   upload remains untested because the lab panel license is expired.
+
+## WordPress-only Fail2ban installation in 0.5.4
+
+- CSF/LFD no longer disables package preview/install. SSH/mail/FTP protection
+  controls and backend activation checks remain blocked when CSF/LFD is present.
+- A persistent native systemd mask prevents package scripts from starting
+  Fail2ban before setup. It is removed only after configuration is validated.
+  Existing administrator units/masks and active services are not replaced.
+- For a new configuration, Fail2ban's native reader identifies enabled package
+  defaults without requiring an existing auth.log. An owned jail.d override keeps
+  those defaults off; the WordPress jail remains a separate explicit choice.
+- Pre-existing configuration is not rewritten. An interrupted install retains
+  the guard and resumes through retry or the existing start-service action.
+- Verification: 482 Linux/root tests ran, 475 passed and 7 optional WordPress
+  checks skipped. All 33 panel PHP files passed lint and 43 Node tests passed.
+  Native tests verify that Ubuntu's actual package unmask helper preserves the
+  installation mask, fresh defaults do not require auth.log, and a real isolated
+  Fail2ban daemon starts with only the WordPress jail. That fixture uses a private
+  database/socket/log and a dummy action; it performs no host firewall changes.
+  Tests also cover failure/retry, administrator file preservation and CSF controls.
+  No production configuration was changed. The lab's existing Fail2ban package
+  was used for native checks; a fresh APT install and native panel upload were
+  not repeated in this verification.

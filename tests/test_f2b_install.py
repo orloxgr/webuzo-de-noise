@@ -25,6 +25,8 @@ class PackageTests(unittest.TestCase):
         self.enterContext(patch.object(installer, 'OS_RELEASE', self.os))
         self.enterContext(patch.object(host, 'binary', side_effect=lambda name: None if name == 'fail2ban-client' else '/usr/bin/' + name))
         self.enterContext(patch.object(host, 'service_blockers', return_value=[]))
+        self.prepare = self.enterContext(patch.object(installer.f2b_bootstrap, 'prepare'))
+        self.finish = self.enterContext(patch.object(installer.f2b_bootstrap, 'finish'))
         self.run = Mock(side_effect=self.command)
         self.origins = [{'origin': 'Ubuntu', 'trusted': True}]
         self.simulation = 'Inst fail2ban (1.0.2 Ubuntu:24.04/noble [all])\nConf fail2ban\n'
@@ -36,6 +38,8 @@ class PackageTests(unittest.TestCase):
             if len(argv) == 5:
                 return json.dumps([dict(name=name, origins=self.origins) for name, version in json.loads(argv[-1])])
             return json.dumps(dict(version='1.0.2', origins=self.origins))
+        if argv[-1:] == ('-d',):
+            return repr(['set', 'loglevel', 'INFO'])
         if '-s' in argv:
             return self.simulation
         return 'OK'
@@ -48,43 +52,49 @@ class PackageTests(unittest.TestCase):
         self.assertTrue(all('-y' not in call.args for call in self.run.call_args_list))
         self.assertFalse((self.state / installer.JOB).exists())
 
-    def test_csf_blocks_installation_preview_without_commands_or_plan(self):
-        with patch.object(host, 'service_blockers', return_value=['CSF']):
-            with self.assertRaisesRegex(ValueError, 'package scripts'):
-                installer.preview(self.state, self.run)
-        self.run.assert_not_called()
-        self.assertFalse((self.state / installer.PLAN).exists())
-
-    def test_csf_appearing_after_preview_blocks_start_without_spawn(self):
-        value = installer.preview(self.state, self.run)
-        self.run.reset_mock()
-        with patch.object(host, 'service_blockers', return_value=['LFD']), \
-                patch.object(installer.os, 'posix_spawn', create=True) as spawn:
-            with self.assertRaisesRegex(ValueError, 'automatic Fail2ban installation'):
-                installer.start(self.state, value['token'], self.run)
-        self.run.assert_not_called(); spawn.assert_not_called()
+    def test_successful_manual_recovery_clears_the_failed_install_message_only(self):
+        installer.recovered(self.state)
         self.assertFalse((self.state / installer.JOB).exists())
+        (self.state / installer.JOB).write_text(json.dumps(dict(id='a' * 32, state='failed', error='Package configuration failed')))
+        installer.recovered(self.state)
+        job = installer.status(self.state)
+        self.assertEqual(job['state'], 'complete')
+        self.assertNotIn('error', job)
+        self.assertEqual(job['id'], 'a' * 32)
 
-    def test_worker_rechecks_csf_before_package_commands_even_after_a_valid_preview(self):
+    def test_csf_allows_read_only_package_preview(self):
+        with patch.object(host, 'service_blockers', return_value=['CSF', 'LFD']):
+            plan = installer.preview(self.state, self.run)
+        self.assertEqual(plan['package'], 'fail2ban')
+        self.assertTrue(all('-y' not in call.args for call in self.run.call_args_list))
+        self.prepare.assert_not_called(); self.finish.assert_not_called()
+
+    def test_csf_appearing_after_preview_does_not_block_start(self):
+        plan = installer.preview(self.state, self.run)
+        with patch.object(host, 'service_blockers', return_value=['CSF']), \
+             patch.object(installer.os, 'posix_spawn', create=True) as spawn, \
+             patch.object(installer.os, 'POSIX_SPAWN_OPEN', 0, create=True):
+            result = installer.start(self.state, plan['token'], self.run)
+        self.assertEqual(result['state'], 'queued'); spawn.assert_called_once()
+
+    def test_csf_worker_guards_package_before_install_and_configures_before_start(self):
         plan = installer.preview(self.state, self.run)
         job = dict(id='a' * 32, state='queued', created=plan['created'], version=plan['version'])
         (self.state / installer.JOB).write_text(json.dumps(job))
-        self.run.reset_mock()
-        with patch.object(host, 'service_blockers', return_value=['CSF']):
+        order = []
+        self.prepare.side_effect = lambda *args: order.append('mask')
+        self.finish.side_effect = lambda *args: order.append('configure-and-unmask')
+        def command(*args, **kwargs):
+            if '-y' in args: order.append('apt')
+            if args[-3:] == ('enable', '--now', 'fail2ban'): order.append('start')
+            return self.command(*args, **kwargs)
+        self.run.side_effect = command
+        with patch.object(host, 'service_blockers', return_value=['CSF', 'LFD']), \
+             patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'), \
+             patch.object(host, 'active_jails', return_value=[]):
             installer.worker(self.state, job['id'], self.run)
-        self.run.assert_not_called()
-        self.assertEqual(installer.status(self.state)['state'], 'failed')
-        self.assertIn('package scripts', installer.status(self.state)['error'])
-
-    def test_worker_rechecks_csf_after_package_planning_and_before_install(self):
-        plan = installer.preview(self.state, self.run)
-        job = dict(id='b' * 32, state='queued', created=plan['created'], version=plan['version'])
-        (self.state / installer.JOB).write_text(json.dumps(job))
-        self.run.reset_mock()
-        with patch.object(host, 'service_blockers', side_effect=[[], ['CSF']]):
-            installer.worker(self.state, job['id'], self.run)
-        self.assertTrue(all('-y' not in call.args for call in self.run.call_args_list))
-        self.assertEqual(installer.status(self.state)['state'], 'failed')
+        self.assertEqual(installer.status(self.state)['state'], 'complete')
+        self.assertEqual(order, ['mask', 'apt', 'configure-and-unmask', 'start'])
 
     def test_third_party_untrusted_and_mixed_origins_are_rejected(self):
         for origins in [[dict(origin='ThirdParty', trusted=True)], [dict(origin='Ubuntu', trusted=False)],
@@ -154,12 +164,13 @@ class PackageTests(unittest.TestCase):
         job = dict(id='a' * 32, state='queued', created=plan['created'], version=plan['version'])
         (self.state / installer.JOB).write_text(json.dumps(job))
         with patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'), \
-             patch.object(host, 'active_jails', return_value=['sshd']):
+             patch.object(host, 'active_jails', return_value=[]):
             installer.worker(self.state, job['id'], self.run)
         self.assertEqual(installer.status(self.state)['state'], 'complete')
         calls = [call.args for call in self.run.call_args_list]
         self.assertIn(tuple(plan['command']), calls)
-        self.assertIn(('/usr/bin/fail2ban-client', '-t'), calls)
+        self.prepare.assert_called_once_with(self.state, self.run)
+        self.finish.assert_called_once_with(self.state, self.run)
         self.assertIn(('/usr/bin/systemctl', 'enable', '--now', 'fail2ban'), calls)
         self.assertFalse((self.state / installer.PLAN).exists())
 
@@ -176,10 +187,9 @@ class PackageTests(unittest.TestCase):
             return self.command(*argv, **kwargs)
         self.run.side_effect = command
         with patch.object(host, 'client', return_value='/usr/bin/fail2ban-client'), \
-                patch.object(host, 'active_jails', return_value=['sshd']):
+                patch.object(host, 'active_jails', return_value=[]):
             installer.worker(self.state, job['id'], self.run)
         self.assertEqual(phases, [
             'Installing Fail2ban packages. Service checks will follow when APT finishes.',
-            'Packages installed. Checking Fail2ban configuration.',
             'Starting Fail2ban and checking service readiness.'])
         self.assertEqual(installer.status(self.state)['state'], 'complete')

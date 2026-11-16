@@ -469,9 +469,12 @@ def dispatch(request):
         elif action == 'fail2ban_unban':
             host_protection.unban(STATE, request.get('service'), request.get('ips'), run)
         elif action == 'fail2ban_start':
+            guarded = f2b_install.f2b_bootstrap.finish(STATE, run)
             host_protection.check_service_start(run)
-            run(host_protection.client(), '-t')
+            if not guarded:
+                run(host_protection.client(), '-t')
             run(host_protection.binary('systemctl') or '/usr/bin/systemctl', 'enable', '--now', 'fail2ban')
+            f2b_install.recovered(STATE)
         return {'ok': True, 'fail2ban': host_protection.snapshot(STATE, run, live=True),
                 'install_job': f2b_install.status(STATE), 'wordpress': wordpress.snapshot(STATE, run), **extra}
     if request.get('action') in REVIEW_ACTIONS:

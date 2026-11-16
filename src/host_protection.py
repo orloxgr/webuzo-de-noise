@@ -81,26 +81,34 @@ def activation_error(blockers):
             'Existing jails are not changed automatically.')
 
 
-def check_service_start(run):
-    """With CSF/LFD, only a WordPress-only (or empty) jail setup may start."""
-    if not service_blockers():
-        return
+def configured_jails(run):
+    """Read enabled jails from the native configuration without starting them."""
     parsed = False
+    enabled = set()
     for line in run(client(), '-d').splitlines():
         if not line.strip():
             continue
         try:
             command = ast.literal_eval(line)
         except (ValueError, SyntaxError) as error:
-            raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked while CSF/LFD is installed.') from error
+            raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked.') from error
         if (not isinstance(command, list) or not command or not isinstance(command[0], str)
                 or command[0] not in ('set', 'multi-set', 'add', 'start')):
             raise ValueError('Invalid Fail2ban configuration dump; service start blocked.')
         parsed = True
-        if command[0] in ('add', 'start') and (len(command) < 2 or command[1] != wordpress.JAIL):
-            raise ValueError('CSF/LFD detected: service start is blocked because enabled jails include protection other than the De-Noise WordPress jail. Review the existing Fail2ban configuration first. No jails were changed.')
+        if command[0] in ('add', 'start'):
+            if len(command) < 2 or not isinstance(command[1], str) or not re.fullmatch(r'[A-Za-z0-9_.-]+', command[1]):
+                raise ValueError('Invalid Fail2ban jail name in configuration dump')
+            enabled.add(command[1])
     if not parsed:
-        raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked while CSF/LFD is installed.')
+        raise ValueError('Cannot inspect enabled Fail2ban jails; service start blocked.')
+    return enabled
+
+
+def check_service_start(run):
+    """With CSF/LFD, only a WordPress-only (or empty) jail setup may start."""
+    if service_blockers() and configured_jails(run) - {wordpress.JAIL}:
+        raise ValueError('CSF/LFD detected: service start is blocked because enabled jails include protection other than the De-Noise WordPress jail. Review the existing Fail2ban configuration first. No jails were changed.')
 
 
 def jail(key):

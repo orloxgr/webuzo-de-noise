@@ -137,8 +137,9 @@ require $install.'/panel/index.php';
             self.assertLess(body.index('WordPress login protection'), body.index('<h2 class="u-mb20">Fail2ban</h2>'))
             if enabled: self.assertIn('Uncheck all enabled service protections', body)
 
-    def test_csf_blocks_package_preview_instead_of_starting_the_distribution_ssh_jail(self):
+    def test_csf_allows_package_preview_for_wordpress_without_enabling_service_protections(self):
         body = json.loads(self.render(ajax=True, csf=True, installed=False))['report']
-        self.assertIn('Automatic installation is blocked while CSF/LFD is installed', body)
-        self.assertIn('disabled>Preview Fail2ban installation</button>', body)
+        self.assertIn('Fail2ban can be installed for WordPress while CSF/LFD handles', body)
+        self.assertIn('>Preview Fail2ban installation</button>', body)
+        self.assertNotIn('disabled>Preview Fail2ban installation</button>', body)
         self.assertNotIn('value="fail2ban_install_start"', body)

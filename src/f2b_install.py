@@ -13,6 +13,7 @@ sys.pycache_prefix = str(Path(__file__).resolve().parent / '.bytecode')
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import storage
 import host_protection
+import f2b_bootstrap
 
 PLAN = 'fail2ban-install-plan.json'
 JOB = 'fail2ban-install-job.json'
@@ -87,13 +88,7 @@ def candidate(run):
                 'install', 'fail2ban=' + version])
 
 
-def check_installation_allowed():
-    if host_protection.service_blockers():
-        raise ValueError('CSF/LFD detected: automatic Fail2ban installation is blocked because package scripts may enable the distribution SSH jail. For WordPress-only protection, install and configure Fail2ban manually, then refresh status. No existing protection was changed.')
-
-
 def preview(state, run):
-    check_installation_allowed()
     if host_protection.binary('fail2ban-client'):
         raise ValueError('Fail2ban is already installed. Refresh its status instead.')
     plan = candidate(run)
@@ -110,11 +105,20 @@ def status(state):
     return result
 
 
+def recovered(state):
+    """Clear a failed install diagnostic after an explicit successful start."""
+    job = read(state, JOB)
+    if job and job['state'] == 'failed':
+        job = {key: value for key, value in job.items() if key != 'error'}
+        job.update(state='complete', message='Fail2ban installation recovered and service started.')
+        storage.replace(Path(state) / JOB, storage.json_bytes(job), 0o600)
+        storage.replace(Path(state) / PLAN, None)
+
+
 def start(state, token, run):
     current = status(state)
     if current['state'] in ('queued', 'running'):
         return current
-    check_installation_allowed()
     plan = read(state, PLAN)
     if (not isinstance(token, str) or not re.fullmatch('[0-9a-f]{64}', token) or not plan or
             plan['token'] != token or time.time() - plan['created'] > 3600):
@@ -149,16 +153,15 @@ def worker(state, identity, run):
         storage.replace(Path(state) / JOB, storage.json_bytes(job), 0o600)
     report(state='running')
     try:
-        check_installation_allowed()
         fresh = candidate(run)
         if any(fresh[name] != plan[name] for name in ('os', 'version', 'command', 'simulation')):
             raise ValueError('The package plan changed before installation. Review it again.')
         report(message='Installing Fail2ban packages. Service checks will follow when APT finishes.')
-        check_installation_allowed()
+        f2b_bootstrap.prepare(state, run)
         run(*fresh['command'], timeout=900)
         report(message='Packages installed. Checking Fail2ban configuration.')
+        f2b_bootstrap.finish(state, run)
         client = host_protection.client()
-        run(client, '-t')
         systemctl = host_protection.binary('systemctl')
         if not systemctl:
             raise ValueError('Systemd is required to start the Fail2ban service')
