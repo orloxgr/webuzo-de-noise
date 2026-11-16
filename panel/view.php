@@ -46,28 +46,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
     <button form="hdn-settings" id="hdn-general-save" class="button u-mt20 u-mb20" type="submit"><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button>
     <?php require $install . '/panel/domains.php'; ?>
 <?php elseif ($key === 'agents'): ?>
-    <h2 class="u-mb20">User-Agent lists</h2>
-    <p class="u-mb20">One literal substring per line. Case-insensitive. Each list has its own switch.</p>
-    <div class="hdn-agent-grid">
-    <?php foreach ($data['presets']['agent_categories'] ?? [] as $field => $category): $isOther = $field === 'agents'; ?>
-    <<?= $isOther ? 'details' : 'section' ?> class="box-collapse hdn-agent-card<?= $isOther ? ' hdn-agent-other' : '' ?>">
-    <?php if ($isOther): ?><summary class="box-collapse-header"><?= $escape($category['title']) ?></summary><?php endif; ?>
-    <div class="box-collapse-content">
-    <?php if (!$isOther): ?><h3 class="u-mb10"><?= $escape($category['title']) ?></h3><?php endif; ?>
-    <p class="u-mb10"><?= $escape($category['description']) ?></p>
-    <label class="form-label u-block u-mb10"><input form="hdn-settings" type="checkbox" name="<?= $field ?>_enabled" <?= !array_key_exists($field . '_enabled', $policy) || $policy[$field . '_enabled'] ? 'checked' : '' ?>> Enable this list</label>
-    <label class="form-label" for="<?= $field ?>"><?= $escape($category['title']) ?> blocklist</label>
-    <textarea form="hdn-settings" class="form-control u-mb10" rows="6" id="<?= $field ?>" name="<?= $field ?>" spellcheck="false"><?= $escape(implode("\n", $policy[$field] ?? [])) ?></textarea>
-    <div class="hdn-inventory-actions">
-    <button type="button" class="button button-secondary" data-hdn-preset="<?= $field ?>" data-hdn-agent-field="<?= $field ?>">Add suggested agents</button>
-    <button type="button" class="button button-secondary" data-hdn-append-analyzed="<?= $field ?>" aria-describedby="hdn-analyzed-<?= $field ?>" disabled>Append analyzed agents</button>
-    </div>
-    <p class="u-mt10" id="hdn-analyzed-<?= $field ?>" role="status">Uses the latest completed agent analysis, across all result pages.</p>
-    <?php if ($isOther): ?><p>Only recognized crawlers and fetch clients are included. Unknown agents and browser strings remain available for individual selection in the results.</p><?php endif; ?>
-    </div></<?= $isOther ? 'details' : 'section' ?>>
-    <?php endforeach; ?>
-    </div>
-    <p class="u-mt10">Lists describe crawler purposes, not whether requests are malicious. Suggested entries are optional. To limit crawlers only on particular URLs, use Filtered URLs.</p>
+    <?php require $install . '/panel/agent-lists.php'; ?>
     <?php $reviewKind = 'agents'; require $install . '/panel/inventory.php'; unset($reviewKind); ?>
 <?php elseif ($key === 'endpoints'): ?>
     <?php require $install . '/panel/endpoints.php'; ?>
@@ -96,7 +75,7 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <?php if ($isAdmin): ?><button form="hdn-settings" id="hdn-save" class="button u-mt20" type="submit" <?= in_array($activeTab, ['general', 'cron', 'fail2ban', 'activity', 'access', 'countries'], true) ? 'hidden' : '' ?>><i class="fas fa-floppy-disk icon-purple"></i>Save &amp; Apply</button><?php endif; ?>
 <p class="u-mt20"><small>Version <?= $escape($meta['version']) ?></small></p>
 </div></div>
-<script type="application/json" id="hdn-agent-presets"><?= json_encode(array_map(static fn($category) => $category['entries'], $data['presets']['agent_categories'] ?? []), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
+<?php require $install . '/panel/agent-presets.php'; ?>
 <script type="application/json" id="hdn-probe-presets"><?= json_encode(['probe_files' => $data['presets']['probe_files'] ?? [], 'probe_queries' => $data['presets']['probe_queries'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script><?php readfile($install . '/panel/lists.js'); ?></script>
 <script><?php readfile($install . '/panel/settings.js'); ?></script>

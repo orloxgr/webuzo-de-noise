@@ -63,3 +63,22 @@ adding their names to the saved selection. Global exceptions and each site's
 additional exceptions affect only XML-RPC blocking. Schema 15 preserves existing
 site selections and settings; older open panels retain the global and exception
 fields they did not render. Hestia's delegated domain-ban feature remains absent.
+
+## Webuzo 0.5.3
+
+Compared all subsequent upstream commits through
+`431eca09a79c425b32075aeaaf1c979e5a26c9c9` (Hestia 0.25.1).
+Hestia 0.24.0's global XML-RPC exception box is already present in Webuzo 0.5.2,
+including the explicitly requested Global scope checkbox and future-site support;
+that Webuzo behavior is retained without importing Hestia's policy migration.
+
+Ported 0.25.0's expanded crawler catalog, descriptions and two optional Search
+append groups, together with 0.25.1's purpose corrections. Bytespider,
+ElevenlabsCrawler, CCBot and VelenPublicWebCrawler are suggested under AI Training;
+YisouSpider and ZoominfoBot under additional search. The fifth editor is called
+Data Collection / Monitoring. Unconfirmed names and generic clients are recognized
+for individual review but excluded from bulk suggestions.
+
+The Webuzo snapshot keeps its native nested presets structure and administrator
+visibility. Existing list values, independent enable switches and effective
+blocking are preserved; this release adds no policy schema or migration.

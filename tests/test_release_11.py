@@ -51,5 +51,7 @@ class PresetUpgradeTests(unittest.TestCase):
         self.assertEqual(new['agents'], ['ExistingBot'])
         self.assertFalse(new['mail_protection'])
         self.assertIn('ibou-search', SEARCH_AGENTS)
-        self.assertFalse(set(SEARCH_AGENTS) & {'Googlebot', 'bingbot', 'facebookexternalhit'})
+        self.assertNotIn('facebookexternalhit', SEARCH_AGENTS)
+        self.assertEqual(new['search_agents'], [])
+        self.assertEqual(DEFAULT['search_agents'], [])
         self.assertFalse(DEFAULT['bans']['missing_files']['enabled'])

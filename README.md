@@ -9,7 +9,14 @@ to Webuzo.
 ## Features
 
 - Five independent User-Agent lists: scanner tools, AI training crawlers, search
-  indexers, SEO/backlink crawlers and other data collection.
+  indexers, SEO/backlink crawlers and Data Collection / Monitoring.
+  Search has separate **Add additional search bots** and **Add major search & AI
+  bots** buttons. Both append to the same blocklist, preserve manual entries and
+  skip duplicates; they do not save settings or enable a list. Blocking major
+  search and AI crawlers can reduce search visibility and citations.
+  The catalog explains operator, purpose and usefulness. Generic HTTP libraries
+  and names with an unconfirmed purpose remain individually reviewable rather
+  than becoming bulk suggestions.
 - Private-file protection, login/XML-RPC limits, filtered-URL budgets and
   missing-static-file rules.
 - Global or per-site XML-RPC blocking, IP/CIDR exceptions and Allow Jetpack.

@@ -401,7 +401,7 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
             'fail2ban': host_protection.snapshot(STATE, run) if owner is None else None,
             'install_job': f2b_install.status(STATE) if owner is None else None,
             'cron': cron_spread.public(load('cron-spread.json', None)) if owner is None else None,
-            'presets': {'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
+            'presets': {**agent_catalog.SEARCH_PRESETS, 'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
                         'agent_categories': agent_catalog.CATEGORIES,
                         'filter_agents': FILTER_AGENTS, 'rules': RULES,
                         'probe_files': probe_rules.FILES, 'probe_queries': probe_rules.QUERY_TARGETS,

@@ -178,3 +178,23 @@ The original test-environment policy, access profiles and unit files were restor
   CSRF form ownership, paginated fields, full CSV and desktop/mobile checks.
   The actual official Jetpack download returned 8 valid networks in the lab.
   Tests used an isolated source tree; no production server was changed.
+
+## Agent suggestions and classification in 0.5.3
+
+- Ported the Hestia 0.25.1 crawler catalog and descriptions, including recognition
+  of all 50 community-list declarations. The five editors and independent
+  switches remain; the fifth editor is Data Collection / Monitoring.
+- Search offers separate additional/regional/specialized and major/AI append
+  groups. Both target the existing blocklist, preserve manual edits, deduplicate
+  case-insensitively and neither submit nor change switches.
+- Updated purpose classification affects suggestions and new analyses. Saved
+  lists stay in their original editors with their existing effective behavior;
+  no schema change or policy migration is introduced. Generic HTTP clients and
+  unconfirmed names stay available for individual review, outside bulk presets.
+- Validation: 471 Linux/root tests ran, 464 passed and 7 opt-in WordPress tests
+  skipped. All 33 panel PHP files passed lint and all 43 Node regressions passed.
+  A rendered PHP/Edge test verifies both search buttons, repeated-click dedup,
+  concurrent manual edits, untouched switches/other lists, submitted form values
+  and no automatic save or network request. Tests used isolated sources in the
+  Webuzo VM; no production configuration was changed. Native plugin-manager
+  upload remains untested because the lab panel license is expired.
