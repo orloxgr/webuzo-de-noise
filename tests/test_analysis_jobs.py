@@ -110,6 +110,35 @@ class Jobs(unittest.TestCase):
         with self.assertRaises(PermissionError):analysis_jobs.status(self.root,job,'admin',kind='activity',owner='bob')
         with self.assertRaises(PermissionError):analysis_jobs.status(self.root,job,'admin')
 
+    def test_activity_rate_results_export_all_filtered_rows_and_older_reports(self):
+        import activity, time, datetime
+        with patch.object(analysis_jobs, 'launch_worker', return_value=99999999):
+            job = analysis_jobs.start(self.root, [], 'root', 'all', 17, kind='activity')['id']
+        path = analysis_jobs.directory(self.root, job)
+        stamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        log = self.root/'rates.log'
+        log.write_text(f'{stamp} one.test agent-group-agents REJECTED 429 enforce\t"CustomBot"\n' * 502 +
+                       f'{stamp} one.test login REJECTED_DRY_RUN 200 observe\t"CustomBot"\n' +
+                       f'{stamp} two.test agent-group-agents PASSED 200 enforce\t"OtherSite"\n')
+        with patch.object(activity, 'LOG', log):
+            result = activity.summary({'one.test', 'two.test'}, time.time()+1, report_path=path/'report.sqlite')
+        analysis_jobs.write(path, 'result.json', result)
+        analysis_jobs.write(path, 'status.json', dict(state='complete'))
+        first = analysis_jobs.export_review(self.root, job, 'root', kind='activity', domain='one.test')
+        second = analysis_jobs.export_review(self.root, job, 'root', kind='activity', domain='one.test', offset=500)
+        self.assertEqual(first['columns'][-1], 'Rate result')
+        self.assertEqual(len(first['rows'])+len(second['rows']), 503)
+        rows = first['rows']+second['rows']
+        self.assertEqual({r[-1] for r in rows}, {'REJECTED', 'REJECTED_DRY_RUN'})
+        self.assertTrue(all(r[1] == 'one.test' for r in rows))
+        self.assertIn('login', {r[2] for r in rows})
+        # Old saved reports lack the field; exporting them must not invent a result.
+        result.update(findings_database=False, findings_total=1, recent=[dict(time=stamp,
+            domain='one.test', rule='agent', agent='Legacy', outcome='matched', status=200)])
+        analysis_jobs.write(path, 'result.json', result)
+        old = analysis_jobs.export_review(self.root, job, 'root', kind='activity')
+        self.assertEqual(old['rows'][0][-1], 'Not recorded')
+
     def test_activity_start_preserves_owner_scope_and_defers_inventory(self):
         with patch.object(engine,'authorize',return_value=(True,'alice')), patch.object(engine,'collect') as inventory, \
              patch.object(engine,'STATE',self.root), patch.object(analysis_jobs,'launch_worker') as launch:

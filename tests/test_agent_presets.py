@@ -76,6 +76,62 @@ class AgentPresets(unittest.TestCase):
         self.assertEqual(catalog.classify('ElevenlabsCrawler'), 'ai_agents')
         self.assertIn('research', catalog.describe('CCBot')['purpose'])
 
+    def test_new_declared_products_are_separate_from_generic_and_unconfirmed_clients(self):
+        groups = {
+            'ai_agents': ['RiverBot', 'PostHogImageFetcherBot'],
+            'search_agents': ['KeenableBot', 'SeznamBot', 'SofyaBot', 'Qwantbot',
+                              'Sogou web spider', 'Sogou Pic Spider', 'Qwantbot-news'],
+            'tool_agents': ['l9scan', 'ModatScanner', 'WP-Safe-Scanner', 'wp-cve-2026-87902-validator'],
+            'agents': ['webXtrendBot', 'KStandBot', 'Keenable-User', 'Sofya-User'] + catalog.VARIOUS,
+        }
+        for field, names in groups.items():
+            for name in names:
+                with self.subTest(name=name):
+                    self.assertEqual(catalog.observed('Mozilla/5.0 (' + name.lower() + '/1.0)'), (name, field))
+        for name in ('HeadlessChrome', 'Bravebot', 'WP-Safe-Scanner', 'wp-cve-2026-87902-validator'):
+            self.assertNotIn(name, {n for c in catalog.CATEGORIES.values() for n in c['entries']})
+        self.assertEqual(catalog.describe('Bravebot')['operator'], 'Not confirmed')
+        self.assertIn('does not establish', catalog.describe('wp-cve-2026-87902-validator')['usefulness'])
+
+    def test_specific_products_override_generic_renderers_and_libraries_in_analysis_only(self):
+        for name, field in [('RiverBot', 'ai_agents'), ('ShapBot', 'search_agents'),
+                            ('Sogou Pic Spider', 'search_agents'), ('Sofya-User', 'agents')]:
+            self.assertEqual(catalog.observed('HeadlessChrome/145.0 curl/8.0 ' + name + '/1.0'), (name, field))
+        for name in ('HeadlessChrome', 'curl', 'FontScanBot'):
+            raw = 'Not' + name + '/1.0'
+            self.assertEqual(catalog.observed(raw), (raw, 'agents'))
+        self.assertEqual(catalog.observed('Qwantbot-news/2.0'), ('Qwantbot-news', 'search_agents'))
+
+    def test_collection_monitoring_bulk_and_various_selection_are_disjoint(self):
+        self.assertEqual(set(catalog.DATA_COLLECTION) | set(catalog.MONITORING), set(catalog.OTHER))
+        self.assertFalse(set(catalog.DATA_COLLECTION) & set(catalog.MONITORING))
+        bulk = {name for category in catalog.CATEGORIES.values() for name in category['entries']}
+        self.assertFalse(bulk & set(catalog.VARIOUS))
+        choices = catalog.review_choices()
+        self.assertEqual([row['name'] for row in choices], catalog.VARIOUS)
+        for row in choices:
+            self.assertTrue(row['purpose'] and row['usefulness'] and row['kind'])
+            self.assertNotIn('checked', row)
+        for name in ('ChatGPT-User', 'facebookcatalog', 'AdsBot-Google-Mobile', 'Pinterestbot'):
+            self.assertNotIn(name, bulk | set(catalog.VARIOUS))
+
+    def test_catalog_update_preserves_saved_block_and_rate_rules_and_schema16(self):
+        saved = copy.deepcopy(policy.DEFAULT)
+        saved.update(agents=['RiverBot', 'HeadlessChrome', 'My manual name'], agents_enabled=False,
+                     search_agents=['KStandBot'], search_agents_enabled=True)
+        saved['agent_limits']['agents']['group'].update(enabled=True, agents=['curl'], rate=7)
+        saved['agent_limits']['agents']['individual'] = [dict(enabled=True, agent='HeadlessChrome', rate=3, unit='m', burst=0)]
+        self.assertEqual(policy.validate(copy.deepcopy(saved)), saved)
+        old = copy.deepcopy(saved); old.pop('agent_limits'); old['schema'] = 15
+        migrated = policy.validate(old)
+        for field in catalog.CATEGORIES:
+            self.assertEqual(migrated[field], saved[field])
+            self.assertEqual(migrated[field + '_enabled'], saved[field + '_enabled'])
+        self.assertEqual(migrated['agent_limits'], policy.DEFAULT['agent_limits'])
+        compiled = policy.global_config(policy.DEFAULT, [])
+        for name in ('HeadlessChrome', 'RiverBot', 'ModatScanner', 'webXtrendBot'):
+            self.assertNotIn(policy.literal_regex(name), compiled)
+
 
 if __name__ == '__main__':
     unittest.main()

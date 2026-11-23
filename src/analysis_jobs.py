@@ -377,8 +377,9 @@ def export_review(state, job, actor, kind='scan', owner=None, domain='all', offs
             block = r.get('eligible_block', False)
             rows.append([r['domain'],r['path'],r['category'],r['count'],json.dumps(r['statuses']),json.dumps(r['methods']),json.dumps(r['agents']),r['clients'],r['recommendation']['title'],'exact' if block else '',r['candidate'] if block else '',r['domain'],r['candidate'] if r.get('can_append_404') else '',r['advice']])
     elif kind == 'activity':
-        columns = ['Time','Site','Rule','Declared agent','Result','HTTP status']
-        rows = [[r.get(k,'') for k in ('time','domain','rule','agent','outcome','status')] for r in values]
+        columns = ['Time','Site','Rule','Declared agent','Result','HTTP status','Rate result']
+        rows = [[r.get(k,'') for k in ('time','domain','rule','agent','outcome','status')] +
+                [r.get('limit') or 'Not recorded'] for r in values]
     elif kind == 'php_files':
         import php_findings
         columns = ['PHP path','Hits','Source domains / hits','Classification','Explanation','First seen UTC','Last seen UTC',

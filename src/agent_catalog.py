@@ -3,11 +3,13 @@ import re
 
 SCANNERS = ['TLM-Audit-Scanner', 'sqlmap', 'Nikto', 'Nuclei', 'zgrab',
             'masscan', 'ZmEu', 'DirBuster', 'gobuster', 'ffuf', 'WPScan',
-            'CensysInspect', 'Expanse', 'Palo Alto Networks']
+            'CensysInspect', 'Expanse', 'Palo Alto Networks', 'l9scan', 'ModatScanner']
 AI = ['meta-externalagent', 'ClaudeBot', 'GPTBot', 'Reflectionbot', 'Amazonbot',
-      'Bytespider', 'ElevenlabsCrawler', 'CCBot', 'VelenPublicWebCrawler']
+      'Bytespider', 'ElevenlabsCrawler', 'CCBot', 'VelenPublicWebCrawler',
+      'RiverBot', 'PostHogImageFetcherBot']
 SEARCH_ADDITIONAL = ['PetalBot', 'Baiduspider', 'ibou-search', 'Owler', 'SeekportBot',
-                     'YandexBot', 'MojeekBot', 'IbouBot', '360Spider', 'YisouSpider', 'ZoominfoBot']
+                     'YandexBot', 'MojeekBot', 'IbouBot', '360Spider', 'YisouSpider', 'ZoominfoBot', 'ShapBot',
+                     'KeenableBot', 'SeznamBot', 'SofyaBot', 'Qwantbot', 'Sogou web spider', 'Sogou Pic Spider']
 SEARCH_MAJOR = ['Googlebot', 'Googlebot-Image', 'Googlebot-News', 'Googlebot-Video',
                 'bingbot', 'Applebot', 'DuckDuckBot', 'DuckAssistBot', 'meta-webindexer',
                 'OAI-SearchBot', 'Claude-SearchBot', 'Amzn-SearchBot', 'PerplexityBot',
@@ -18,7 +20,20 @@ SEARCH_PRESETS = {'search_additional': SEARCH_ADDITIONAL, 'search_major': SEARCH
 SEO = ['MJ12bot', 'AhrefsBot', 'SemrushBot', 'DotBot', 'BLEXBot', 'SERankingBacklinksBot',
        'DataForSeoBot', 'Barkrowler', 'serpstatbot', 'SearchAtlasBot', 'LinkpadBot',
        'Screaming Frog SEO Spider', 'MegaIndex.ru', 'SeobilityBot', 'SEOkicks-Robot', 'rogerbot']
-OTHER = ['GoogleOther', 'AwarioBot', 'ImagesiftBot', 'Magpie-Crawler', 'RecordedFuture']
+DATA_COLLECTION = ['GoogleOther', 'ImagesiftBot', 'webXtrendBot', 'KStandBot']
+MONITORING = ['AwarioBot', 'Magpie-Crawler', 'RecordedFuture']
+OTHER = DATA_COLLECTION + MONITORING
+APPEND_PRESETS = {**SEARCH_PRESETS, 'data_collection': DATA_COLLECTION, 'monitoring': MONITORING}
+
+# Review-only choices: deliberately absent from every bulk append preset.
+GENERIC = ['HeadlessChrome', 'Python-urllib', 'python-requests', 'curl', 'httpx',
+           'Go-http-client', 'quic-go', 'Amazon Web Services']
+UNCONFIRMED = ['BacklinksExtendedBot', 'Timpibot', 'CMS-Checker', 'AionBot',
+               'Epochal-Search', 'BasegrowBot', 'FontScanBot', 'EchoGreyBot',
+               'CrolBot', 'SeltzSitemapFetcher', 'Bravebot', 'YouBot', 'cohere-ai',
+               'DeepSeekBot', 'Kimi-SearchBot', 'KimiBot', 'MoonshotBot', 'GrokBot',
+               'AzureAI-SearchBot', 'Qwenbot']
+VARIOUS = GENERIC + UNCONFIRMED
 
 CATEGORIES = {
     'tool_agents': dict(title='Scanner tools', entries=SCANNERS,
@@ -29,27 +44,28 @@ CATEGORIES = {
         description='Search and AI search indexing. Blocking these crawlers can reduce visibility in their services.'),
     'seo_agents': dict(title='SEO & Backlink Crawlers', entries=SEO,
         description='SEO analysis and backlink indexes. Some also feed search engines; AhrefsBot powers Yep as well as Ahrefs tools.'),
-    'agents': dict(title='Data Collection / Monitoring', entries=OTHER,
-        description='General research, image collection, brand monitoring and threat intelligence. Recognized fetch clients and unclassified declarations also appear here for individual review.')}
+    'agents': dict(title='Data Collection / Monitoring / Various', entries=OTHER,
+        description='Research, image collection, brand monitoring and threat intelligence. Various contains generic automation and unconfirmed declarations for individual selection; these names do not establish malicious use.')}
 
 # Recognize fetch clients, variants and uncertain/generic declarations separately.
 # Generic libraries and names with no confirmed purpose are not bulk suggestions.
 EXTRA = {
-    'search_agents': ['Baiduspider-render', 'Baiduspider-image', 'Baiduspider-mobile', 'Baiduspider-video'],
+    'tool_agents': ['WP-Safe-Scanner', 'wp-cve-2026-87902-validator'],
+    'search_agents': ['Baiduspider-render', 'Baiduspider-image', 'Baiduspider-mobile', 'Baiduspider-video',
+                      'Qwantbot-news'],
     'seo_agents': ['AhrefsSiteAudit', 'SiteAuditBot'],
     'agents': ['ChatGPT-User', 'Claude-User', 'Amzn-User', 'meta-externalfetcher',
                'Perplexity-User', 'ExaUser', 'Google-InspectionTool', 'AdsBot-Google',
                'OAI-AdsBot', 'meta-externalads', 'facebookcatalog',
                'facebookexternalhit', 'Twitterbot', 'Slackbot', 'Discordbot', 'WhatsApp', 'TelegramBot',
-               'BacklinksExtendedBot', 'Timpibot', 'CMS-Checker', 'AionBot', 'Epochal-Search',
-               'BasegrowBot', 'Amazon Web Services', 'Go-http-client', 'quic-go']}
+               'AdsBot-Google-Mobile', 'Pinterestbot', 'Keenable-User', 'Sofya-User'] + VARIOUS}
 
 # Keep distinct products (including image/render crawlers) separate so appending
 # a selected row never broadens an image-only rule to an entire crawler family.
 _NAMES = [(name, field) for field, category in CATEGORIES.items()
           for name in category['entries'] + EXTRA.get(field, [])]
 _OBSERVED = tuple((re.compile(r'(?<![A-Za-z0-9_-])' + re.escape(name) + r'(?![A-Za-z0-9_-])', re.I), name, field)
-                  for name, field in sorted(_NAMES, key=lambda row: -len(row[0])))
+                  for name, field in sorted(_NAMES, key=lambda row: (row[0] in GENERIC, -len(row[0]))))
 
 
 def classify(value):
@@ -62,7 +78,8 @@ def classify(value):
 
 
 def observed(value):
-    # Longest product names first; e.g. AhrefsSiteAudit is not AhrefsBot.
+    # Specific declarations before generic libraries/renderers, then longest name.
+    # This is analysis only; saved literal matching and policy precedence do not change.
     for pattern, name, field in _OBSERVED:
         if pattern.search(value):
             return name, field
@@ -81,3 +98,10 @@ def describe(value):
     import agent_details
     name, _ = observed(value)
     return agent_details.describe(name)
+
+
+def review_choices():
+    """Finite optional choices, with no inferred identity or automatic selection."""
+    import agent_details
+    return [dict(name=name, kind='Generic automation' if name in GENERIC else 'Unconfirmed purpose / operator',
+                 **agent_details.describe(name)) for name in VARIOUS]

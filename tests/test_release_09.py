@@ -35,7 +35,7 @@ class UpgradeTests(unittest.TestCase):
         old['agents'] = ['CustomBot']
         old['bans']['missing_files']['paths'] = ['/custom.php']
         new = validate(old)
-        self.assertEqual(new['schema'], 15)
+        self.assertEqual(new['schema'], 16)
         self.assertEqual(new['agents'], ['CustomBot'])
         self.assertEqual(new['bans']['missing_files']['paths'], ['/custom.php'])
         self.assertEqual(new['bans']['any_404'], {**old['bans']['any_404'], 'exclude_static':True, 'min_distinct_paths':3})

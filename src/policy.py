@@ -7,13 +7,14 @@ from urllib.parse import quote, unquote
 import probe_rules
 import enumeration
 import agent_catalog
+import agent_limits
 import endpoints
 import endpoint_404
 import xmlrpc_block
 import access_protection
 
 MARKER = '# Managed by webuzo-de-noise'
-VERSION = '0.5.4'
+VERSION = '0.6.0'
 MODES = ('off', 'observe', 'enforce')
 SCANNER_AGENTS = agent_catalog.SCANNERS
 CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
@@ -23,7 +24,7 @@ CRAWLER_AGENTS = ['meta-externalagent', 'GoogleOther', 'MJ12bot', 'Bytespider',
 SEARCH_AGENTS = agent_catalog.SEARCH
 PRESET_AGENTS = SCANNER_AGENTS + CRAWLER_AGENTS[:3]
 FILTER_AGENTS = ['Applebot', 'Amazonbot', 'Reflectionbot', 'Googlebot', 'bingbot']
-DEFAULT = {'schema': 15, 'xmlrpc_block': copy.deepcopy(xmlrpc_block.DEFAULT), 'custom_endpoints': [], 'endpoint_404': copy.deepcopy(endpoint_404.DEFAULT), 'mode': 'observe', 'agents': [], 'scanners': False,
+DEFAULT = {'schema': 16, 'agent_limits': copy.deepcopy(agent_limits.DEFAULT), 'xmlrpc_block': copy.deepcopy(xmlrpc_block.DEFAULT), 'custom_endpoints': [], 'endpoint_404': copy.deepcopy(endpoint_404.DEFAULT), 'mode': 'observe', 'agents': [], 'scanners': False,
            'enumeration': copy.deepcopy(enumeration.SETTINGS),
            'log_rejections': False, 'mail_protection': False,
            'login': {'enabled': False, 'rate': 5, 'burst': 3},
@@ -45,7 +46,8 @@ for _field in ('ai_agents', 'search_agents', 'seo_agents'):
     DEFAULT[_field] = []
     DEFAULT[_field + '_enabled'] = True
 AGENT_KEYS = {key for field in ('ai_agents', 'search_agents', 'seo_agents') for key in (field, field + '_enabled')}
-V13_KEYS = set(DEFAULT) - {'xmlrpc_block'}
+V15_KEYS = set(DEFAULT) - {'agent_limits'}
+V13_KEYS = V15_KEYS - {'xmlrpc_block'}
 V12_KEYS = V13_KEYS - {'endpoint_404'}
 V11_KEYS = V12_KEYS - {'custom_endpoints'}
 V10_KEYS = V11_KEYS | {'domain_bans'}
@@ -159,13 +161,15 @@ def validate(raw):
         data.update(schema=13, endpoint_404=copy.deepcopy(endpoint_404.DEFAULT))
     if data.get('schema') == 13 and set(data) == V13_KEYS:
         data.update(schema=14, xmlrpc_block={'enabled': False, 'targets': []})
-    if data.get('schema') == 14 and set(data) == set(DEFAULT):
+    if data.get('schema') == 14 and set(data) == V15_KEYS:
         block = data['xmlrpc_block']
         if isinstance(block, dict) and set(block) == {'enabled', 'targets'}:
             block.update(exceptions={}, global_exceptions=[])
             block['global'] = False
             data['schema'] = 15
-    if data.get('schema') != 15 or set(data) != set(DEFAULT):
+    if data.get('schema') == 15 and set(data) == V15_KEYS:
+        data.update(schema=16, agent_limits=copy.deepcopy(agent_limits.DEFAULT))
+    if data.get('schema') != 16 or set(data) != set(DEFAULT):
         raise ValueError('Unsupported policy format')
     xmlrpc_block.validate(data['xmlrpc_block'], target)
     endpoints.validate(data['custom_endpoints'], target)
@@ -177,6 +181,7 @@ def validate(raw):
         raise ValueError('Invalid User-Agent list switch')
     for field in agent_catalog.CATEGORIES:
         data[field] = validate_agents(data[field])
+    agent_limits.validate(data['agent_limits'], validate_agents)
     ban = data['bans']
     if (not isinstance(ban, dict) or set(ban) != set(DEFAULT['bans']) or
             any(type(ban[key]) is not bool for key in ('enabled', 'private_files', 'repositories')) or
@@ -374,10 +379,12 @@ def global_config(policy, sites, global_blocks=None, access_settings=None, geo_p
         lines.append('    ' + str(address) + ('/32' if address.version == 4 else '/128') + ' 1;')
     lines += ['}']
     lines += ['map $hdn_site $hdn_mode { default off; }',
-             'map $http_user_agent $hdn_agent {', '    default 0;']
+             'map $http_user_agent $hdn_agent_list {', '    default 0;']
     entries = agent_catalog.enabled(policy)
     lines += ['    ' + literal_regex(entry) + ' 1;' for entry in dict.fromkeys(entries)]
-    lines += ['}', 'map $uri $hdn_private {', '    default 0;']
+    lines += ['}']
+    lines += agent_limits.compile_maps(policy['agent_limits'], literal_regex)
+    lines += ['map $hdn_ua_rule $hdn_agent {', '    default 0;', '    "" $hdn_agent_list;', '}', 'map $uri $hdn_private {', '    default 0;']
     if policy['scanners']:
         lines += ['    ' + pattern(p) + ' 1;' for _, p in PRIVATE_PATTERNS]
     lines += ['}']
@@ -433,7 +440,7 @@ def global_config(policy, sites, global_blocks=None, access_settings=None, geo_p
         label = 'static-' + rule['id']
         lines += ['    ' + pattern('(?:^|:)' + label + '(?:$|:)') + ' ' + label + ';']
     lines += ['}', 'map "$hdn_direct_reject:$hdn_private:$hdn_agent:' + ':'.join('$hdn_b' + str(i) for i in range(len(block_variables))) + ':$hdn_static_candidate:$hdn_login_label:$hdn_xmlrpc_label:$hdn_probe_query:$hdn_probe_file:$hdn_enum_match" $hdn_match_base {',
-              '    default "";', '    ' + pattern('^1:') + ' private-file;',
+              '    default $hdn_ua_rule;', '    ' + pattern('^1:') + ' private-file;',
               '    ' + pattern('^[01]:1:') + ' private-file;',
               '    ' + pattern('^[01]:[01]:1:') + ' agent;']
     lines += ['    ' + pattern(':1$') + ' user-enumeration;',
@@ -512,7 +519,9 @@ def site_config(policy, site, document_root=None, access_settings=None):
     for index, rule in enumerate(policy['filters']):
         if rule['action'] == 'limit' and applies(rule, site):
             lines.append('limit_req zone=hdn_f' + str(index) + ((' burst=' + str(rule['burst']) + ' nodelay') if rule['burst'] else '') + ';')
-    if any(policy[key]['enabled'] for key in ('login', 'xmlrpc')) or rate_rules:
+    ua_rates = agent_limits.site_lines(policy['agent_limits'], mode)
+    lines += ua_rates
+    if any(policy[key]['enabled'] for key in ('login', 'xmlrpc')) or rate_rules or ua_rates:
         lines += ['limit_req_status 429;', 'limit_req_dry_run ' + ('off' if mode == 'enforce' else 'on') + ';',
                   'limit_req_log_level ' + ('error' if policy['log_rejections'] else 'notice') + ';']
     lines += ['access_log /var/log/webuzo-de-noise/matches.log hdn if=$hdn_log;']

@@ -87,11 +87,13 @@ require $install.'/panel/index.php';
         result = json.loads(self.render(admin=False, ajax=True))
         self.assertFalse(result['ok']); self.assertNotIn('report', result)
 
-    def test_analyzed_append_has_five_buttons_and_authenticated_read_only_transfer(self):
+    def test_analyzed_append_has_both_destinations_and_authenticated_read_only_transfer(self):
         body = self.render()
-        self.assertEqual(body.count('>Append analyzed agents</button>'), 5)
+        self.assertEqual(body.count('>Append analyzed agents</button>'), 10)
         for category in agent_catalog.CATEGORIES:
             self.assertIn('data-hdn-append-analyzed="' + category + '"', body)
+            for destination in (category, category + '_rate'):
+                self.assertIn('id="hdn-analyzed-' + destination + '"', body)
         for admin, token in ((False, 'fixture-token'), (True, 'wrong')):
             result = json.loads(self.render(admin=admin, ajax=True, ajax_action='agents_candidates', token=token))
             self.assertFalse(result['ok']); self.assertNotIn('received', result)

@@ -101,6 +101,7 @@ class InputTests(unittest.TestCase):
 
     def test_legacy_preferences_are_retired_without_changing_global_rules(self):
         old = copy.deepcopy(DEFAULT); old['schema'] = 10
+        old.pop('agent_limits', None)
         old.pop('custom_endpoints'); old.pop('endpoint_404'); old.pop('xmlrpc_block')
         old['domain_bans'] = dict(allow_users=True, sites={'alice/one.test': dict(missing_files=True, suspicious_queries=True, any_404=True)})
         old.update(mode='enforce', agents=['MyBot'])

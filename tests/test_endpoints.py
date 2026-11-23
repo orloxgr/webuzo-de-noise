@@ -38,6 +38,7 @@ class EndpointPolicy(unittest.TestCase):
         saved=copy.deepcopy(DEFAULT); saved['custom_endpoints']=[rule(enabled=False)]
         for schema in (11,12):
             incoming=copy.deepcopy(DEFAULT); incoming['schema']=schema
+            incoming.pop('agent_limits', None)
             incoming.pop('endpoint_404'); incoming.pop('xmlrpc_block')
             if schema==11: incoming.pop('custom_endpoints')
             with patch.object(engine,'authorize',return_value=(True,'root')), patch.object(engine,'load',return_value=saved), \
@@ -47,9 +48,10 @@ class EndpointPolicy(unittest.TestCase):
 
     def test_webuzo_schema11_migration_has_no_active_new_rules(self):
         old = copy.deepcopy(DEFAULT); old.pop('custom_endpoints'); old.pop('endpoint_404'); old.pop('xmlrpc_block'); old['schema'] = 11
+        old.pop('agent_limits', None)
         old['mode'] = 'enforce'; old['bans']['ignore_ips'] = ['198.51.100.2']
         current = validate(old)
-        self.assertEqual(current['schema'], 15)
+        self.assertEqual(current['schema'], 16)
         self.assertEqual(current['custom_endpoints'], [])
         self.assertEqual(current['bans']['ignore_ips'], ['198.51.100.2/32'])
         self.assertEqual(current['mode'], 'enforce')

@@ -401,8 +401,9 @@ def snapshot(policy, sites, owner=None, wordpress_live=False, listing=None):
             'fail2ban': host_protection.snapshot(STATE, run) if owner is None else None,
             'install_job': f2b_install.status(STATE) if owner is None else None,
             'cron': cron_spread.public(load('cron-spread.json', None)) if owner is None else None,
-            'presets': {**agent_catalog.SEARCH_PRESETS, 'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
+            'presets': {**agent_catalog.APPEND_PRESETS, 'scanners': SCANNER_AGENTS, 'crawlers': CRAWLER_AGENTS, 'search_crawlers': SEARCH_AGENTS,
                         'agent_categories': agent_catalog.CATEGORIES,
+                        'agent_various': agent_catalog.review_choices(),
                         'filter_agents': FILTER_AGENTS, 'rules': RULES,
                         'probe_files': probe_rules.FILES, 'probe_queries': probe_rules.QUERY_TARGETS,
                         'probe_parameters': probe_rules.QUERY_PARAMETERS} if owner is None else {}}
@@ -662,18 +663,20 @@ def dispatch(request):
             raise ValueError('Expected policy settings')
         previous = policy
         policy = validate({**incoming, 'overrides': previous['overrides']})
-        if incoming.get('schema') not in (14, 15):
+        if incoming.get('schema') != 16:
+            policy['agent_limits'] = previous['agent_limits']
+        if incoming.get('schema') not in (14, 15, 16):
             policy['xmlrpc_block'] = previous['xmlrpc_block']
         elif incoming.get('schema') == 14:
             for key in ('exceptions', 'global', 'global_exceptions'):
                 policy['xmlrpc_block'][key] = previous['xmlrpc_block'][key]
-        if incoming.get('schema') not in (13, 14, 15):
+        if incoming.get('schema') not in (13, 14, 15, 16):
             policy['endpoint_404'] = previous['endpoint_404']
-        if incoming.get('schema') not in (12, 13, 14, 15):
+        if incoming.get('schema') not in (12, 13, 14, 15, 16):
             policy['custom_endpoints'] = previous['custom_endpoints']
-        if incoming.get('schema') not in (9, 10, 11, 12, 13, 14, 15):
+        if incoming.get('schema') not in (9, 10, 11, 12, 13, 14, 15, 16):
             policy['enumeration'] = previous['enumeration']
-        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13, 14, 15):
+        if incoming.get('schema') not in (8, 9, 10, 11, 12, 13, 14, 15, 16):
             for key in ('log_rejections', 'mail_protection'):
                 policy[key] = previous[key]
             for key in ('exclude_static', 'min_distinct_paths'):

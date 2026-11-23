@@ -119,6 +119,32 @@ add('quic-go', 'quic-go project (client library)', 'QUIC and HTTP/3 library used
 add('Bytespider', 'ByteDance', 'Collects public content, including data for AI model training, testing and validation.', 'Contributing data to ByteDance AI development; the cited training-data summary documents this use, not every use of the crawler.', 'https://aial.ie/research/gpai-training-transparency/archive/ByteDance_Seedeam_5_0_2026_09_08.pdf')
 add('YisouSpider', 'Shenma Search', 'Crawls web pages for Shenma mobile search.', 'Search visibility for audiences using Shenma in China.', 'https://zhanzhang.sm.cn/open/optimizaGuide')
 
+add('ShapBot', 'Parallel', 'Collects public web pages to build and maintain the Parallel search index.', 'Discovery through Parallel web search APIs and search features. Separate from user-triggered Shap-User requests.', 'https://parallel.ai/parallel-web-systems-bots')
+
+
+add('RiverBot', 'River', 'Collects public web pages for AI model training and evaluation.', TRAINING, 'https://river.ai/bot')
+add('PostHogImageFetcherBot', 'PostHog', 'Downloads images referenced by session recordings for AI training; not a search crawler.', 'AI training image retrieval. Blocking this fetcher does not disable ordinary PostHog session recording or replay.', 'https://posthog.com/docs/ai-research/image-fetcher-bot')
+add('KeenableBot', 'Keenable', 'Builds and maintains a search index for AI agents and applications.', 'Discovery and citations through Keenable search; separate from user-triggered Keenable-User fetches.', 'https://app.keenable.ai/bot')
+add('Keenable-User', 'Keenable', 'Fetches specific pages requested by a person or an agent acting for one.', 'User-requested retrieval through Keenable; separate from its search-index crawler.', 'https://app.keenable.ai/bot')
+add('SofyaBot', 'Sofya', 'Builds an independent web search index.', 'Discovery through Sofya search; separate from user-triggered Sofya-User fetches.', 'https://sofya.co/bot')
+add('Sofya-User', 'Sofya', 'Fetches individual pages requested by users of Sofya.', 'User-requested access to your current pages through Sofya.', 'https://sofya.co/bot')
+add('SeznamBot', 'Seznam', 'Crawls web pages for Seznam search.', 'Search visibility for audiences using Seznam.', 'https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/')
+add('Qwantbot', 'Qwant', 'Builds and refreshes the Qwant web search index.', 'Discovery of pages through Qwant search.', 'https://help.qwant.com/bot')
+add('Qwantbot-news', 'Qwant', 'Crawls content for Qwant News.', 'News discovery through Qwant; kept separate from the general web crawler in analysis.', 'https://help.qwant.com/bot')
+add('Sogou web spider', 'Sogou (declared crawler name)', 'Declares Sogou web search crawling.', 'Search visibility for audiences using Sogou; the declaration does not verify the requester.', 'https://www.sogou.com/docs/help/webmasters.htm')
+add('Sogou Pic Spider', 'Sogou (declared image crawler name)', 'Declares image crawling for Sogou; kept separate from the web spider.', 'Image discovery for audiences using Sogou; the declaration does not verify the requester.', 'https://www.sogou.com/docs/help/webmasters.htm')
+add('l9scan', 'LeakIX scanning project (declared name)', 'Declares internet-service scanning; l9scan is named in LeakIX event pipelines.', 'Exposure and security research; the name alone does not establish who ran a scan.', 'https://docs.leakix.net/docs/api/domain/')
+add('ModatScanner', 'Modat', 'Scans and indexes publicly exposed hosts and services at machine level.', 'Internet exposure and security research rather than ordinary web search indexing.', 'https://scanner.modat.io/')
+add('webXtrendBot', 'webXtrend', 'Collects domain, DNS, redirect and start-page information, with periodic revisits.', 'Market research, competitive analysis, security and brand protection; collection and monitoring overlap.', 'https://webxtrend.com/crawler')
+add('KStandBot', 'URL Classification / Komodia', 'Crawls websites to classify their content, with periodic revisits.', 'Website categorization and filtering services.', 'https://url-classification.io/wiki/index.php/Website_classification_crawler')
+add('HeadlessChrome', 'Chrome automation (requester not identified)', 'Chrome running without a visible browser window; not a specific crawler or security scanner.', 'Rendering, screenshots, tests and other automation, including scraping. Review your own services before blocking this broad name.', 'https://developer.chrome.com/docs/automation-and-testing/headless')
+add('Python-urllib', 'Python urllib library (user-run client)', 'HTTP client declaration used by programs using Python urllib.', 'May be a legitimate integration, monitor or script; the name alone does not identify a particular bot.', 'https://docs.python.org/3/library/urllib.request.html')
+add('python-requests', 'Requests project (user-run client)', 'HTTP client library used by many Python programs.', 'May be an API integration, monitor or script; review your own services before restricting it.', 'https://requests.readthedocs.io/en/latest/')
+add('curl', 'curl project (user-run client)', 'Command-line HTTP client and transfer tool used by many scripts.', 'May be a legitimate health check, scheduled task or integration; not a specific bot.', 'https://curl.se/docs/manpage.html')
+add('httpx', 'HTTPX declaration (requester not identified)', 'A shared client name that does not establish which HTTP client or tool made a request.', 'May be a legitimate HTTP client, integration or testing tool; inspect requested URLs before restricting it.', None)
+add('Bravebot', 'Not confirmed', 'This declaration is not confirmed as Brave Search. Brave documents that its crawler does not advertise a differentiated User-Agent.', 'Review the requester independently; do not infer official Brave identity or maliciousness from this name.', 'https://search.brave.com/help/brave-search-crawler')
+add('WP-Safe-Scanner|wp-cve-2026-87902-validator', 'Not confirmed', 'The name declares WordPress security testing; the operator and claimed checks are unverified.', 'Could be an authorized audit or an unrelated scan. The declaration does not establish a vulnerability or validate a CVE identifier.', None)
+
 
 def describe(name):
     known = DETAILS.get(name.casefold())

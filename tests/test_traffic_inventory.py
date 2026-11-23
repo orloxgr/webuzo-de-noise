@@ -122,9 +122,9 @@ class Categories(unittest.TestCase):
             self.assertEqual(policy.validate_agents([observed]), [name])
         for value in ('NotGPTBot/1.0', 'NotPerplexityBot/1.0', 'Googlebot-ImageProxy/1.0',
                       'Baiduspider-render-evil/1.0', 'ExaSearchBot-ImagesBackup/1.0',
-                      'Mozilla/5.0 Chrome/156.0.0.0', 'WordPress/7.0; https://example.test', 'MailPoet Cron', 'curl/8.7.1'):
+                      'Mozilla/5.0 Chrome/156.0.0.0', 'WordPress/7.0; https://example.test', 'MailPoet Cron'):
             self.assertEqual(agent_catalog.observed(value), (value, 'agents'))
-        for name in ('ChatGPT-User', 'Claude-User', 'Perplexity-User', 'ExaUser', 'facebookexternalhit', 'GoogleOther'):
+        for name in ('ChatGPT-User', 'Claude-User', 'Perplexity-User', 'ExaUser', 'facebookexternalhit', 'GoogleOther', 'curl'):
             self.assertEqual(agent_catalog.observed(name + '/1.0'), (name, 'agents'))
             self.assertNotIn(name, agent_catalog.AI)
 
@@ -317,13 +317,14 @@ class Inventory(unittest.TestCase):
         agents = ['Unknown-' + str(n) for n in range(1005)] + [
             'Mozilla/5.0 Chrome/99.0', 'WordPress/6.8', 'curl/8.7.1',
             'GPTBot/1.0', 'GoogleOther', 'facebookexternalhit/1.1',
-            'Baiduspider-render/2.0', 'Googlebot-Image/1.0', 'CensysInspect/1.1', 'AhrefsBot/1.0']
+            'Baiduspider-render/2.0', 'Googlebot-Image/1.0', 'CensysInspect/1.1', 'AhrefsBot/1.0',
+            'HeadlessChrome/145.0', 'FontScanBot/1.0', 'WP-Safe-Scanner/2.0']
         (self.logs / 'one.test.log').write_text(''.join(self.line(agent=name) for name in agents))
         job, directory = self.export_job()
         before = hashlib.sha256((directory / 'report.sqlite').read_bytes()).hexdigest()
-        expected = {'tool_agents': ['CensysInspect'], 'ai_agents': ['GPTBot'],
+        expected = {'tool_agents': ['CensysInspect', 'WP-Safe-Scanner'], 'ai_agents': ['GPTBot'],
             'search_agents': ['Baiduspider-render', 'Googlebot-Image'],
-            'seo_agents': ['AhrefsBot'], 'agents': ['GoogleOther', 'facebookexternalhit']}
+            'seo_agents': ['AhrefsBot'], 'agents': ['GoogleOther', 'facebookexternalhit', 'curl', 'HeadlessChrome', 'FontScanBot']}
         with patch.object(log_analysis, 'scan') as scan:
             for category, names in expected.items():
                 offset, found, scanned, chunks = 0, [], 0, 0

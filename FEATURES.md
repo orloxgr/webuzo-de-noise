@@ -221,3 +221,51 @@ The original test-environment policy, access profiles and unit files were restor
   No production configuration was changed. The lab's existing Fail2ban package
   was used for native checks; a fresh APT install and native panel upload were
   not repeated in this verification.
+
+## Server-wide User-Agent rates and catalog review in 0.6.0
+
+- Ported the applicable Hestia 0.26.0–0.26.1 changes through
+  `30129e9c21955c82886d8330bfe10659be04ab60`. Five full-width accordions contain
+  independent block/group editors, individual rules and unsaved effective-action
+  previews. The analyzer accordion retains its form, selection and report.
+- Individual > group > blocklist applies across category boundaries. All bots
+  selected by one category group share one website-wide budget across sites,
+  aliases and IPs; an individual bot uses only its own budget. Longest-substring
+  and stable lexical ties select a single rule. Seconds/minutes, nonnegative
+  burst and native nodelay are supported. Excesses return 429 without IP bans.
+- Observe counters are isolated from Enforce; Off has an uncounted empty key.
+  Independent private-file, endpoint, URL/login, access and website-ban rules
+  retain their behavior. Activity and complete filtered CSV include the overall
+  native limiter status without claiming which independent zone rejected it.
+  Older reports display Not recorded for an unavailable rate-result field.
+- Webuzo schema 15 upgrades to 16 with empty, inactive rate controls. Existing
+  blocklists, switches and overrides remain. Older open forms retain saved new
+  settings; current forms can clear them. Native administrator authorization,
+  candidate validation, confirmed reload and journaled rollback remain in use.
+- Updated optional bot suggestions, descriptions and observational grouping.
+  Data Collection / Monitoring / Various keeps the stored `agents` category and
+  one group budget. Collection and Monitoring append separately; Various uses
+  unchecked individual choices with no select-all or hidden bulk additions.
+  Recognized generic/unconfirmed analyzed names remain manually appendable.
+- Shared webmail uses Webuzo's separate native EMPS Nginx. Its existing optional
+  block/private-file behavior is preserved; website rate rules do not override
+  those blocks or share counters with webmail. No service/helper is introduced.
+- New validation on 23 November 2026: **507 Linux/root tests ran: 500 passed and
+  7 optional WordPress fixture checks skipped** in an isolated source tree in
+  the Webuzo VM, with Python 3.12.3 and native website Nginx 1.30.7. This includes
+  nine isolated native HTTP agent-rate tests: sharing across sites/aliases/IPs
+  and workers, native static assets and POSTs, individual/group precedence,
+  longest matches, Observe/Off isolation, burst/refill, literal escaping,
+  candidate test/reload and independent protection labels. Rate-change rollback,
+  legacy schema/forms, administrator isolation and 503-row filtered Activity
+  export with older-report compatibility also pass.
+- **36 PHP lint checks and 44 Node regressions passed.** All Python modules
+  parse with Python 3.9 syntax. A real headless Edge test using the rendered
+  Webuzo PHP fixture passes at 1280px and 390px: accordions/keyboard, isolated
+  block/group presets and Various selection, preserved edits/switches, preview,
+  conflicts, hidden-control validation and no page overflow or implicit save.
+  Its analysis status is stubbed; it is not a native browser analysis proof.
+- These checks use disposable loopback Nginx instances and isolated state;
+  they do not install the new source into a running panel. Fresh APT installation,
+  native plugin-manager ZIP upload, production installation and complete customer
+  flows were not repeated. No production configuration was changed.

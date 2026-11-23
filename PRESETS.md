@@ -1,9 +1,24 @@
-# Presets
+# Presets — Webuzo 0.6.0
+
+Suggestions are optional. Each purpose category has an independent blocklist,
+a shared group-rate list and individual rate rules. Append buttons target their
+own editor and preserve live manual edits and enable switches. Review the result,
+then Save & Apply; no button saves settings or enables protection automatically.
+
+Individual rules override group limits, which override blocklists across all
+categories. Website budgets span all protected sites, aliases and client IPs;
+Observe uses separate counters and Off does not count. Rate fields start empty
+and inactive. Shared EMPS webmail keeps its existing separate block/private-file
+protection and does not participate in website rate budgets.
+
+Names are literal case-insensitive substrings and never verified identities.
+The following are the complete optional bulk suggestions in `src/agent_catalog.py`.
 
 ## Scanner tools
 
-**User-Agents → Add scanner tools** inserts these literal names into the
-Scanner tools box, which has its own enable switch:
+Security scanners and testing tools, including tools used for authorized audits.
+
+**Add suggested agents**:
 
 ```text
 TLM-Audit-Scanner
@@ -20,61 +35,163 @@ WPScan
 CensysInspect
 Expanse
 Palo Alto Networks
+l9scan
+ModatScanner
 ```
 
-These are scanning tools; authorized scans can use them too. The list matches
-declared names and is not identity verification.
+## AI Training Crawlers
 
-## AI training, search, SEO and other crawlers
+Content collection for AI model development and training, including general-purpose datasets used for AI. Common Crawl and Velen also support research or business uses; this category does not imply exclusive AI use.
 
-Each **User-Agents** box has its own enable switch and **Add suggested agents**
-button. The buttons append suggestions to unsaved text; Save & Apply is required.
-**Append analyzed agents** uses the whole completed analysis instead of the
-suggestion catalog. Only recognized names in that category are included. Other
-excludes unknown declarations and browser/application strings; these can still
-be selected individually in the analysis results. Existing entries and enable
-switches are preserved. A failed transfer leaves the lists unchanged.
+**Add suggested agents**:
 
-| List | Suggested names |
-| --- | --- |
-| AI Training Crawlers | meta-externalagent, ClaudeBot, GPTBot, Reflectionbot, Amazonbot |
-| Search Indexers | LinkupBot, meta-webindexer, PetalBot, Baiduspider, ibou-search |
-| SEO & Backlink Crawlers | MJ12bot, AhrefsBot, SemrushBot, DotBot, BLEXBot, SERankingBacklinksBot |
-| Other Crawlers / Data Collection | GoogleOther, Bytespider, YisouSpider, ElevenlabsCrawler, CCBot |
+```text
+meta-externalagent
+ClaudeBot
+GPTBot
+Reflectionbot
+Amazonbot
+Bytespider
+ElevenlabsCrawler
+CCBot
+VelenPublicWebCrawler
+RiverBot
+PostHogImageFetcherBot
+```
 
-These names describe declared purposes, not maliciousness or verified identity.
-Some crawlers serve several products. AhrefsBot also supplies Yep, and Amazonbot
-has mixed product and potential AI-training uses. GoogleOther is a generic
-research/product crawler and is kept outside the AI training group.
+## Search Indexers
 
-**Analyze current agents** additionally recognizes Baiduspider render/image/mobile/video,
-Googlebot image/news/video, PerplexityBot, ExaSearchBot and DuckAssistBot as search
-crawlers. CensysInspect and Palo Alto Networks declarations are classified as scanners.
-Versions of each product combine; image/render products remain separate so appending
-one does not silently select the parent crawler. Social previews, user-requested
-fetchers, application clients and unrecognized browser strings stay under Other.
-That placement is not a recommendation to block them.
+Search and AI search indexing. Blocking these crawlers can reduce visibility in their services.
 
-Googlebot, Bingbot, Applebot, PerplexityBot, ExaSearchBot, DuckAssistBot, social-preview
-and user-requested retrieval agents are recognized without being added to default
-block suggestions. Existing saved lists and switches are not updated automatically.
-Run a new analysis after upgrading to apply the current catalog to new results.
+**Add additional search bots**:
 
-Crawler documentation: [Exa](https://crawler.exa.ai/),
-[Perplexity](https://docs.perplexity.ai/docs/resources/perplexity-crawlers),
-[DuckAssistBot](https://duckduckgo.com/duckduckgo-help-pages/results/duckassistbot),
-[Censys](https://docs.censys.com/docs/opt-out-of-data-collection),
-[Palo Alto Networks](https://cortex-docs.paloaltonetworks.com/cortex-xpanse/reference/scanning-activity.md).
+```text
+PetalBot
+Baiduspider
+ibou-search
+Owler
+SeekportBot
+YandexBot
+MojeekBot
+IbouBot
+360Spider
+YisouSpider
+ZoominfoBot
+ShapBot
+KeenableBot
+SeznamBot
+SofyaBot
+Qwantbot
+Sogou web spider
+Sogou Pic Spider
+```
 
-**Add optional search crawlers** separately suggests `LinkupBot`,
-`meta-webindexer`, `PetalBot`, `Baiduspider` and `ibou-search`. Review before saving: blocking
-these names can reduce visibility in their services. Suggestions do not change
-existing blocklists automatically.
+**Add major search & AI bots**:
 
-For a narrower policy, use **Filtered URLs → Add optional search crawlers to
-this rule**. This adds the same names to that rule only and preserves its
-domains, action, rate, switch and other names. It does not create a global
-User-Agent block. Review and Save & Apply.
+```text
+Googlebot
+Googlebot-Image
+Googlebot-News
+Googlebot-Video
+bingbot
+Applebot
+DuckDuckBot
+DuckAssistBot
+meta-webindexer
+OAI-SearchBot
+Claude-SearchBot
+Amzn-SearchBot
+PerplexityBot
+ExaSearchBot
+ExaSearchBot-Images
+LinkupBot
+```
+
+## SEO & Backlink Crawlers
+
+SEO analysis and backlink indexes. Some also feed search engines; AhrefsBot powers Yep as well as Ahrefs tools.
+
+**Add suggested agents**:
+
+```text
+MJ12bot
+AhrefsBot
+SemrushBot
+DotBot
+BLEXBot
+SERankingBacklinksBot
+DataForSeoBot
+Barkrowler
+serpstatbot
+SearchAtlasBot
+LinkpadBot
+Screaming Frog SEO Spider
+MegaIndex.ru
+SeobilityBot
+SEOkicks-Robot
+rogerbot
+```
+
+## Data Collection / Monitoring / Various
+
+Research, image collection, brand monitoring and threat intelligence. Various contains generic automation and unconfirmed declarations for individual selection; these names do not establish malicious use.
+
+**Add Data Collection**:
+
+```text
+GoogleOther
+ImagesiftBot
+webXtrendBot
+KStandBot
+```
+
+**Add Monitoring**:
+
+```text
+AwarioBot
+Magpie-Crawler
+RecordedFuture
+```
+
+**Add Various…** opens a finite per-name selector with descriptions and available
+source links. Initially no choices are checked; there is no select-all action.
+Only checked names append to the chosen block/group editor. Closing retains the
+selection. These names are absent from every bulk preset:
+
+Generic automation: HeadlessChrome, Python-urllib, python-requests, curl, httpx, Go-http-client, quic-go, Amazon Web Services.
+
+Unconfirmed purpose/operator: BacklinksExtendedBot, Timpibot, CMS-Checker, AionBot, Epochal-Search, BasegrowBot, FontScanBot, EchoGreyBot, CrolBot, SeltzSitemapFetcher, Bravebot, YouBot, cohere-ai, DeepSeekBot, Kimi-SearchBot, KimiBot, MoonshotBot, GrokBot, AzureAI-SearchBot, Qwenbot.
+
+WP-Safe-Scanner and wp-cve-2026-87902-validator are recognized declarations for
+individual scanner review, without a verified operator, claimed checks or CVE.
+Named fetch clients, ad checks and social previews remain outside bulk/Various.
+HeadlessChrome is generic automation; Bravebot is not confirmed as Brave Search.
+
+**Append analyzed agents** reads recognized names actually present in the entire
+completed report, including recognized generic/unconfirmed clients. Unknown
+browser/application declarations stay individually selectable in the results.
+Specific recognized bot tokens precede generic libraries/renderers when grouping
+new observations; image/news/fetch products remain separate. Saved literal
+matching, lists and switches are unchanged by catalog updates.
+
+Purpose documentation: [River](https://river.ai/bot),
+[PostHog](https://posthog.com/docs/ai-research/image-fetcher-bot),
+[Keenable](https://app.keenable.ai/bot), [Sofya](https://sofya.co/bot),
+[Seznam](https://o-seznam.cz/napoveda/vyhledavani/en/seznambot-crawler/),
+[Qwant](https://help.qwant.com/bot), [Sogou](https://www.sogou.com/docs/help/webmasters.htm),
+[LeakIX](https://docs.leakix.net/docs/api/domain/), [Modat](https://scanner.modat.io/),
+[webXtrend](https://webxtrend.com/crawler),
+[KStand](https://url-classification.io/wiki/index.php/Website_classification_crawler),
+[Chrome automation](https://developer.chrome.com/docs/automation-and-testing/headless)
+and [Brave's crawler declaration](https://search.brave.com/help/brave-search-crawler).
+
+**Analyze current agents** counts retained log requests. Append individual rows
+or recognized names from the completed report to the chosen unsaved list, then review
+and **Save & Apply**. Appending never enables a category. The current complete suggestion catalog is
+`src/agent_catalog.py`; lists below illustrate the purposes. ShapBot belongs to
+Search Indexers (additional search), as documented by
+[Parallel](https://parallel.ai/parallel-web-systems-bots). Unknown/browser-like
+declarations are not automatically classified as malicious.
 
 ## Paths and request budgets
 

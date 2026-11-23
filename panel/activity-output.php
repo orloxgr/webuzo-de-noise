@@ -35,6 +35,11 @@
         $label = $labels[$rule] ?? (strpos($rule, 'filter-limit-') === 0 ? 'Filtered URL rate limit' :
             (strpos($rule, 'filter-block-') === 0 ? 'Filtered URL block' :
             (strpos($rule, 'static-') === 0 ? 'Missing static file rule' : $rule)));
+        $categories = ['tool_agents'=>'Scanner tools', 'ai_agents'=>'AI Training Crawlers', 'search_agents'=>'Search Indexers', 'seo_agents'=>'SEO & Backlink Crawlers', 'agents'=>'Data Collection / Monitoring / Various'];
+        foreach ($categories as $field => $title) {
+            if ($rule === 'agent-group-' . $field) $label = 'Group rate limit: ' . $title;
+            if (strpos($rule, 'agent-individual-' . $field . '-') === 0) $label = 'Individual bot rate limit: ' . $title;
+        }
         foreach ($data['policy']['custom_endpoints'] ?? [] as $endpoint) {
             if ($rule === 'endpoint-' . $endpoint['id']) $label = 'Endpoint: ' . $endpoint['name'];
         }
@@ -65,11 +70,12 @@ to <time data-hdn-time datetime="<?= $escape($activity['window_end']) ?>"><?= $e
 <td><?= $escape($row['blocked']) ?></td><td><?= $escape($row['matched']) ?></td><td><?= $escape($row['observed']) ?></td><td><?= $escape($row['total']) ?></td></tr><?php endforeach; ?>
 </tbody></table></div>
 <?php if (!$groups): ?><p>No matching records for this site in the saved time window. This is not a total-traffic measurement.</p><?php endif; ?>
+<p class="u-mt10">Rate result is the overall native Nginx limiter status. REJECTED is an enforced overrun; REJECTED_DRY_RUN is an Observe overrun. Independent URL/login limits also apply: the status alone does not identify which zone rejected a request.</p>
 <h3 class="u-mt20 u-mb10">Individual log records</h3>
 <?php $reviewPage = $activity; require __DIR__ . '/review-pagination.php'; ?>
-<div class="hdn-table-scroll"><table class="table"><thead><tr><th>Time</th><th>Site</th><th>Rule</th><th>User-Agent</th><th>De-Noise result</th><th>HTTP status</th></tr></thead><tbody>
+<div class="hdn-table-scroll"><table class="table"><thead><tr><th>Time</th><th>Site</th><th>Rule</th><th>User-Agent</th><th>De-Noise result</th><th>HTTP status</th><th>Rate result</th></tr></thead><tbody>
 <?php foreach ($activity['findings'] ?? [] as $row): ?><tr>
-<td><time data-hdn-time datetime="<?= $escape($row['time']) ?>"><?= $escape(str_replace('T', ' ', $row['time'])) ?></time></td><td><?= $escape($row['domain']) ?></td><td><?= $ruleHtml($row['rule']) ?></td><td class="hdn-activity-agent"><?= $agentHtml($row['agent'] ?? null) ?></td><td><?= $escape($outcomes[$row['outcome']] ?? $row['outcome']) ?></td><td><?= $escape($row['status']) ?></td>
+<td><time data-hdn-time datetime="<?= $escape($row['time']) ?>"><?= $escape(str_replace('T', ' ', $row['time'])) ?></time></td><td><?= $escape($row['domain']) ?></td><td><?= $ruleHtml($row['rule']) ?></td><td class="hdn-activity-agent"><?= $agentHtml($row['agent'] ?? null) ?></td><td><?= $escape($outcomes[$row['outcome']] ?? $row['outcome']) ?></td><td><?= $escape($row['status']) ?></td><td><?= $escape($row['limit'] ?? 'Not recorded') ?></td>
 </tr><?php endforeach; ?>
 </tbody></table></div>
 

@@ -124,6 +124,24 @@ test('failed or malformed candidate transfers leave every unsaved list untouched
     }
 });
 
+test('analyzed group append requests its category and preserves the separate blocklist', async () => {
+    const f=fixture([queued,done,
+        {ok:true,candidates:{category:'search_agents',names:['ShapBot'],scanned:1,total:1,next_offset:null}}
+    ],{inventory:'agents'});
+    await f.submit();
+    const button=f.appendButtons[2];
+    button.dataset.hdnAgentField='search_agents_rate';
+    f.nodes.search_agents_rate={value:'Manual rate agent',dispatchEvent(){}};
+    f.nodes['hdn-analyzed-search_agents_rate']={textContent:''};
+    const before=f.nodes.search_agents.value;
+    await button.click();
+    assert.equal(f.nodes.search_agents_rate.value,'Manual rate agent\nShapBot');
+    assert.equal(f.nodes.search_agents.value,before);
+    assert.equal(f.requests.at(-1).options.body.fields.get('analysis_category'),'search_agents');
+    assert.equal(f.requests.at(-1).options.body.fields.get('action'),'agents_candidates');
+    assert.match(f.nodes['hdn-analyzed-search_agents_rate'].textContent,/1 new agents appended/);
+});
+
 test('empty category is a no-op and unavailable reports cannot append', async () => {
     const f=fixture([queued,done,{ok:true,candidates:{category:'agents',names:[],scanned:0,total:0,next_offset:null}}],{inventory:'agents'});
     await new Promise(resolve=>setImmediate(resolve));

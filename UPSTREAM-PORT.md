@@ -82,3 +82,34 @@ for individual review but excluded from bulk suggestions.
 The Webuzo snapshot keeps its native nested presets structure and administrator
 visibility. Existing list values, independent enable switches and effective
 blocking are preserved; this release adds no policy schema or migration.
+
+## Webuzo 0.6.0
+
+Compared both subsequent commits from `431eca09a79c425b32075aeaaf1c979e5a26c9c9`
+through `30129e9c21955c82886d8330bfe10659be04ab60` (Hestia 0.26.1):
+`42066603bd9b0b06485acad6c32edc5d26ed5c81` adds server-wide agent limits;
+`30129e9c21955c82886d8330bfe10659be04ab60` refines suggestions and Various review.
+
+- Reused the portable rate validation/maps, catalog, purpose descriptions and
+  destination-specific editor behavior. Individual > group > blocklist applies
+  across all categories; longest substring and stable lexical ties select one
+  rate budget. Observe/Enforce counters are separate and Off has an empty key.
+- Webuzo schema 15 upgrades to schema 16 with empty, disabled rate settings.
+  Existing settings and old open form submissions retain saved choices. The
+  existing administrator-only native PHP/CSRF/wexec bridge, Nginx candidate test,
+  confirmed reload and journaled rollback/recovery remain in use.
+- Five full-width category accordions include block/group editors and individual
+  tables. The analyzer accordion preserves its form/report. Data Collection and
+  Monitoring append separately; Various is a finite unchecked per-name selector.
+  The stored `agents` category and its one group budget remain unchanged.
+- Activity records and complete filtered CSV retain the overall native limiter
+  result, without attributing an independent rejection to a particular zone.
+  Previous reports display Not recorded for unavailable rate results.
+- Website budgets span Webuzo's website Nginx instance, including aliases and
+  client IPs. Shared webmail uses a separate native EMPS Nginx instance, so its
+  existing optional blocklists/private-file protection remain independent.
+  No extra service, cross-instance counter helper or Hestia integration is added.
+- No Hestia CLI, paths, firewall/domain-ban backend, vendor source, generated
+  virtual host or distributed template is imported or edited.
+
+Validation and its limits are recorded in [FEATURES.md](FEATURES.md).

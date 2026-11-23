@@ -79,6 +79,21 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(second['changed_files'], 0)
         self.assertEqual(reload.call_count, 1)
 
+    def test_failed_agent_rate_change_restores_saved_budget_and_owned_includes(self):
+        saved = copy.deepcopy(DEFAULT)
+        saved['agent_limits']['agents']['group'].update(enabled=True, agents=['ManualBot'], rate=7)
+        with patch.object(engine, 'verify'), patch.object(engine, 'reload_nginx'):
+            engine.apply(saved, [self.site])
+        before = {p: p.read_bytes() for p in (self.global_file, self.domain_file, self.state/'policy.json')}
+        candidate = copy.deepcopy(saved)
+        candidate['agent_limits']['agents']['group']['rate'] = 11
+        with patch.object(engine, 'verify', side_effect=RuntimeError('Rejected rate candidate')), \
+                patch.object(engine, 'run', return_value=''):
+            with self.assertRaisesRegex(RuntimeError, 'Rejected rate candidate'):
+                engine.apply(candidate, [self.site])
+        self.assertEqual({p: p.read_bytes() for p in before}, before)
+        self.assertFalse((self.state/'transaction.json').exists())
+
     def test_failed_captcha_candidate_restores_password_profile_and_releases_new_socket(self):
         import access_protection as access
         import captcha_runtime as runtime

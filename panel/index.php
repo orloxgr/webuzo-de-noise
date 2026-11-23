@@ -164,6 +164,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $submitted['xmlrpc_block']['global_exceptions'] = $list($globalText, true);
                 }
             }
+            if (($_POST['agent_limits_present'] ?? '') === '1') {
+                if ($submitted['schema'] !== 15) throw new RuntimeException('Incomplete current settings form; reload the panel');
+                $groups = $_POST['agent_groups'] ?? null; $individuals = $_POST['agent_individual'] ?? [];
+                $categories = ['tool_agents', 'ai_agents', 'search_agents', 'seo_agents', 'agents'];
+                if (!is_array($groups) || !is_array($individuals) || array_diff(array_keys($groups), $categories) || array_diff(array_keys($individuals), $categories)) throw new RuntimeException('Invalid User-Agent rate categories');
+                $budget = static function ($row): array {
+                    if (!is_array($row)) throw new RuntimeException('Invalid User-Agent rate row');
+                    return ['enabled'=>isset($row['enabled']),
+                        'rate'=>($row['rate'] ?? '') === '' ? null : filter_var($row['rate'], FILTER_VALIDATE_INT),
+                        'unit'=>$row['unit'] ?? '', 'burst'=>filter_var($row['burst'] ?? '', FILTER_VALIDATE_INT)];
+                };
+                $submitted['agent_limits'] = [];
+                foreach ($categories as $category) {
+                    if (!isset($groups[$category]) || !is_array($groups[$category]) || !is_string($groups[$category]['agents'] ?? null)) throw new RuntimeException('Incomplete group rate-limit settings');
+                    $group = $budget($groups[$category]); $group['agents'] = $list($groups[$category]['agents'], true);
+                    $rows = $individuals[$category] ?? [];
+                    if (!is_array($rows)) throw new RuntimeException('Invalid individual rate-limit list');
+                    $rules = [];
+                    foreach ($rows as $row) {
+                        $entry = $budget($row);
+                        if (!is_string($row['agent'] ?? null)) throw new RuntimeException('Invalid individual agent');
+                        $entry['agent'] = $row['agent']; $rules[] = $entry;
+                    }
+                    $submitted['agent_limits'][$category] = ['group'=>$group, 'individual'=>$rules];
+                }
+                $submitted['schema'] = 16;
+            }
             $request['policy'] = $submitted;
             if (is_array($submitted['static_exceptions'])) $request['policy']['static_exceptions'] = (object)$submitted['static_exceptions'];
             foreach (['files', 'queries'] as $kind) {

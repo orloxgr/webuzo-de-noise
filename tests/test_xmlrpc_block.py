@@ -58,9 +58,10 @@ class XmlrpcBlockTests(unittest.TestCase):
 
     def test_previous_policy_upgrades_without_enabling_or_selecting_sites(self):
         old = copy.deepcopy(DEFAULT); old.pop('xmlrpc_block'); old['schema'] = 13
+        old.pop('agent_limits', None)
         old['mode'] = 'enforce'; old['xmlrpc'].update(enabled=True, rate=7, burst=2)
         new = validate(old)
-        self.assertEqual(new['schema'], 15)
+        self.assertEqual(new['schema'], 16)
         self.assertEqual(new['xmlrpc_block'], block(exceptions={}, enabled=False, targets=[]))
         self.assertEqual(new['xmlrpc'], old['xmlrpc'])
 
@@ -97,9 +98,11 @@ class XmlrpcBlockTests(unittest.TestCase):
         saved = copy.deepcopy(DEFAULT)
         saved['xmlrpc_block'] = block(exceptions={}, enabled=True, targets=['alice/one.test'])
         old = copy.deepcopy(DEFAULT); old.pop('xmlrpc_block'); old['schema'] = 13
+        old.pop('agent_limits', None)
         saved['xmlrpc_block']['exceptions'] = {'alice/one.test': ['192.0.2.1/32']}
         saved['xmlrpc_block'].update(global_exceptions=['198.51.100.1/32'], **{'global':True})
         previous_form = copy.deepcopy(DEFAULT); previous_form['schema'] = 14
+        previous_form.pop('agent_limits', None)
         previous_form['xmlrpc_block'] = dict(enabled=False, targets=[])
         retained = {**saved['xmlrpc_block'], 'enabled':False, 'targets':[]}
         for incoming, expected in ((old, saved['xmlrpc_block']), (previous_form, retained),
@@ -112,6 +115,7 @@ class XmlrpcBlockTests(unittest.TestCase):
 
     def test_schema14_keeps_selections_and_adds_empty_exceptions(self):
         old = copy.deepcopy(DEFAULT); old['schema'] = 14
+        old.pop('agent_limits', None)
         old['xmlrpc_block'] = dict(enabled=True, targets=['alice/one.test'])
         block = validate(old)['xmlrpc_block']
         self.assertEqual(block, {**xmlrpc_block.DEFAULT, 'enabled': True, 'targets': ['alice/one.test']})

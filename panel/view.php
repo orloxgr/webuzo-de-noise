@@ -79,4 +79,8 @@ $activeTab = isset($tabs[$activeTab ?? '']) ? $activeTab : array_key_first($tabs
 <script type="application/json" id="hdn-probe-presets"><?= json_encode(['probe_files' => $data['presets']['probe_files'] ?? [], 'probe_queries' => $data['presets']['probe_queries'] ?? []], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?></script>
 <script><?php readfile($install . '/panel/lists.js'); ?></script>
 <script><?php readfile($install . '/panel/settings.js'); ?></script>
+<?php if ($isAdmin): ?>
+<script><?php readfile($install . '/panel/agent-limits.js'); ?></script>
+<script><?php readfile($install . '/panel/agent-various.js'); ?></script>
+<?php endif; ?>
 <?php if ($isAdmin): ?><script><?php readfile($install . '/panel/rules.js'); ?></script><script><?php readfile($install . '/panel/fail2ban.js'); ?></script><?php endif; ?>

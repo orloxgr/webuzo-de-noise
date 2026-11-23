@@ -85,7 +85,7 @@ def summary(domains, now=None, minutes=15, progress=None, cancelled=None, report
                     outcome = 'blocked'
                 elif mode == 'observe' or limit.endswith('_DRY_RUN'):
                     outcome = 'observed'
-                payload = dict(time=timestamp, domain=domain, rule=rule, outcome=outcome, status=int(status), agent=agent)
+                payload = dict(time=timestamp, domain=domain, rule=rule, outcome=outcome, status=int(status), agent=agent, limit=limit or None)
                 connection.execute('INSERT INTO events VALUES(?,?,?,?,?,?)', (stamp, json.dumps(payload), domain, rule, outcome, agent))
         finally:
             context.__exit__(None, None, None)

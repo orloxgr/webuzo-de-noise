@@ -156,8 +156,9 @@
             const allowed = ['tool_agents', 'ai_agents', 'search_agents', 'seo_agents', 'agents'];
             if (!completedJob || appending || !allowed.includes(category)) return;
             const sourceJob = completedJob;
-            const field = document.getElementById(category);
-            const status = document.getElementById('hdn-analyzed-' + category);
+            const destination = item.dataset.hdnAgentField || category;
+            const field = document.getElementById(destination);
+            const status = document.getElementById('hdn-analyzed-' + destination);
             appending = true;
             updateAppendButtons();
             status.textContent = 'Reading analyzed agents…';
@@ -188,6 +189,8 @@
                 } while (offset !== null);
                 // Merge into the latest unsaved text only after every chunk succeeds.
                 const added = appendLines(field, [...names.values()], true);
+                const accordion = field.closest?.('details');
+                if (accordion) accordion.open = true;
                 status.textContent = names.size ?
                     `${added} new agents appended; ${names.size - added} already present. Save & Apply to save your changes.` :
                     'No recognized agents in this category were found in this analysis.';
@@ -411,6 +414,8 @@
     document.querySelectorAll('[data-hdn-preset]').forEach(button => button.addEventListener('click', () => {
         const field = document.getElementById(button.dataset.hdnAgentField);
         appendLines(field, presets[button.dataset.hdnPreset] || [], true);
+        const accordion = field.closest?.('details');
+        if (accordion) accordion.open = true;
     }));
     document.querySelectorAll('[data-hdn-access-method]').forEach(select => {
         const form = select.closest('form');

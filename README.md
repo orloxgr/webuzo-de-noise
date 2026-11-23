@@ -9,7 +9,7 @@ to Webuzo.
 ## Features
 
 - Five independent User-Agent lists: scanner tools, AI training crawlers, search
-  indexers, SEO/backlink crawlers and Data Collection / Monitoring.
+  indexers, SEO/backlink crawlers and Data Collection / Monitoring / Various.
   Search has separate **Add additional search bots** and **Add major search & AI
   bots** buttons. Both append to the same blocklist, preserve manual entries and
   skip duplicates; they do not save settings or enable a list. Blocking major
@@ -92,6 +92,80 @@ preserved. Saving CAPTCHA protection installs any missing companion systemd
 units automatically; reactivation is not required. Deactivate the plugin before removing its source directory; deactivation
 removes its filtering rules and scheduled maintenance while retaining settings
 and history for reactivation.
+
+## User-Agent blocklists and server-wide rate limits
+
+Each of the five purpose categories has its own full-width accordion. Blocklist
+is on the left, Group rate limit list on the right, and the editable Individual
+rate limit rules table below. On small screens the two lists stack. Preset and
+analyzed-agent buttons append only to the indicated list, preserving current
+edits and switches. Add individual rule accepts any printable literal substring;
+new rows are inactive with an empty name/rate. Review and Save & Apply explicitly.
+
+**Analyze current agents** also has its own accordion. Closing it keeps the
+current selection and report; it does not cancel a running analysis.
+**Data Collection / Monitoring / Various** keeps the same saved category key,
+switches and single server-wide group budget. **Add Data Collection** and
+**Add Monitoring** append separate optional purpose-based suggestions to their
+own editor. **Add Various…** opens an initially unchecked selection of generic
+automation and unconfirmed names, with descriptions and available sources.
+Only checked names are appended; closing the picker preserves selections.
+Generic clients such as HeadlessChrome, curl and Python libraries may belong to
+legitimate rendering, testing or integrations. They are not bulk suggestions or
+verified malicious bots. Manual entries and selected analysis rows remain usable.
+**Append analyzed agents** remains available and may include recognized generic
+or unconfirmed names actually present in the report; review before appending.
+Specific named bots take precedence over generic renderer/library declarations
+when grouping new analysis results; this does not alter saved literal rules.
+
+For each request, enabled individual rules take priority over every group limit,
+which takes priority over every blocklist, across category boundaries. Disabled
+rules do not override anything. Removing/disabling an individual rule can expose
+the next group limit or a blocklist again. Within the individual or group level,
+the longest literal substring wins; equal-length matches use case-insensitive
+lexical name order, then category key. Matching remains case-insensitive against
+the full declared User-Agent, without treating that declaration as verified identity.
+Conflicting individual budgets for the same literal name, or an identical name
+in multiple enabled groups, must be resolved before saving. The effective-action
+preview uses unsaved editor values and shows the action for each configured name.
+
+**All budgets are shared across all supported server websites and all client IPs.**
+Every bot in a category's group list spends the same group budget. A bot selected
+by an individual rule spends only its own budget, not the group budget. Neither
+changing IP nor moving to another website or alias grants another budget. Heavy
+crawling on one website can exhaust the budget for the others.
+
+Webuzo shared webmail runs in its separate EMPS Nginx instance. Its existing
+optional User-Agent blocklists and private-file protection remain independent;
+it does not share these website budgets or gain a User-Agent rate limiter.
+
+Set a positive average rate per minute or second and a nonnegative burst. All
+matching methods and paths count, including images, CSS and JavaScript. [Native
+Nginx](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html) uses a leaky
+bucket rather than a fixed calendar-minute quota. Burst permits
+short spikes without delaying requests; excess requests receive **429** in Enforce,
+without an automatic IP ban. Observe permits requests and records excesses using
+separate counters, so it cannot consume Enforce's budget; Off does not count.
+Other endpoint/private-file/URL/login/access/firewall protections still apply.
+
+Activity identifies the selected group or individual policy when it is the match
+label; higher-priority independent protection matches retain their own labels.
+Individual records and complete CSV include the native overall rate result:
+REJECTED is a real limiter rejection, REJECTED_DRY_RUN an Observe overrun.
+Multiple independent URL/login limiters can apply, so this status does not prove
+which limiter rejected a request. Older saved reports say Not recorded for the
+new rate-result field; refresh Activity to collect it.
+
+Updates retain every saved blocklist, switch, override and other policy setting.
+New group lists are empty, disabled and have no preselected rate; individual
+lists are empty. Saving from an older already-open panel preserves saved rate
+settings. New controls use the existing journaled candidate validation, confirmed
+reload and rollback path, and remain administrator-only in the backend.
+
+ShapBot is an optional Search Indexers / additional search suggestion. Parallel
+[documents it as its search-index crawler](https://parallel.ai/parallel-web-systems-bots),
+separate from user-triggered Shap-User. Adding this catalog entry never inserts it
+into a saved blocklist or enables a rule on upgrade.
 
 ## Domains and Fail2ban
 

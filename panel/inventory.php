@@ -3,8 +3,14 @@ if (!defined('SOFTACULOUS')) { http_response_code(403); exit; }
 $prefix = 'hdn-' . $reviewKind;
 $reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : ($reviewKind === 'endpoints' ? 'Analyze endpoint logs' : 'Analyze PHP 404s');
 ?>
+<?php if ($reviewKind === 'agents'): ?>
+<details class="box-collapse hdn-agent-card u-mt20 u-mb20" id="hdn-agents-analysis">
+<summary class="box-collapse-header"><?= $escape($reviewLabel) ?></summary>
+<div class="box-collapse-content">
+<?php else: ?>
 <section class="hdn-inventory u-mt20 u-mb20" aria-label="<?= $escape($reviewLabel) ?>">
 <h3 class="u-mb10"><?= $escape($reviewLabel) ?></h3>
+<?php endif; ?>
 <form method="post" id="<?= $prefix ?>-scan" data-hdn-context="<?= $escape(($actor ?? ($headerOwner ?? '')) . ':all') ?>">
 <?php $fields($reviewKind . '_start'); ?>
 <div class="hdn-wp-grid">
@@ -25,4 +31,4 @@ $reviewLabel = $reviewKind === 'agents' ? 'Analyze current agents' : ($reviewKin
 <p class="u-mb10"><?= $reviewKind === 'agents' ? 'Hits per declared agent, including asset requests. Recognized names are grouped across versions. Image and rendering crawlers stay separate. Browser strings, application clients and unrecognized names can appear under Other; that category does not mean they should be blocked.' : 'Hits per PHP URL path that returned HTTP 404. Check the source domains before adding a path to the server-wide list; a 404 can also come from a legitimate application route.' ?></p>
 <p class="u-mb10">Append adds selected entries to your unsaved lists. Review them, then Save &amp; Apply. Existing entries, enable switches and ban thresholds stay as you set them.</p>
 <?php require $install . '/panel/inventory-output.php'; ?>
-</section>
+<?php if ($reviewKind === 'agents'): ?></div></details><?php else: ?></section><?php endif; ?>
